@@ -10,6 +10,7 @@ extern crate rustc_driver;
 extern crate rustc_interface;
 
 mod init;
+mod petri_net;
 mod translator;
 
 use crate::translator::Translator;
