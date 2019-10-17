@@ -1,0 +1,70 @@
+%% 
+%% This is file 'beamerthemeRostock.sty'
+%% 
+%% by Mathias Winkel
+%%
+%% Problems, bugs and comments to 
+%% mathias.winkel2@uni-rostock.de
+%%
+
+
+\ProvidesPackage{./unirostock/beamerthemeRostock}
+
+
+% Definition der Lanegeneinheit \mm, die zwischen den Papierformaten in der Vorlage und der Beamer-Class skaliert
+%  1\mm (Vorlage) = 0.504mm (Beamer), da das Beamer-papierformat ca. halb so gross ist wie die Vorlage
+\newlength\mm \mm0.503937007mm
+\newlength\pt \pt0.503937007pt
+
+% externe Packages
+\RequirePackage{colortbl}
+\RequirePackage{parskip}
+\RequirePackage{calc}
+
+\mode<presentation>
+
+
+%%%%%%%% Weiterreichen der Optionen an color- und inner-theme %%%%%%%%
+\DeclareOptionBeamer{uni}{\def\c@loroption{uni}}
+\DeclareOptionBeamer{inf}{\def\c@loroption{inf}}
+\DeclareOptionBeamer{msf}{\def\c@loroption{msf}}
+\DeclareOptionBeamer{ief}{\def\c@loroption{ief}}
+\DeclareOptionBeamer{mnf}{\def\c@loroption{mnf}}
+\DeclareOptionBeamer{mef}{\def\c@loroption{mef}}
+\DeclareOptionBeamer{juf}{\def\c@loroption{juf}}
+\DeclareOptionBeamer{wsf}{\def\c@loroption{wsf}}
+\DeclareOptionBeamer{auf}{\def\c@loroption{auf}}
+\DeclareOptionBeamer{thf}{\def\c@loroption{thf}}
+\DeclareOptionBeamer{phf}{\def\c@loroption{phf}}
+\DeclareOptionBeamer{footuni}{\def\f@@t{footuni}}
+\DeclareOptionBeamer{foottitle}{\def\f@@t{foottitle}}
+\DeclareOptionBeamer{footheadings}{\def\f@@t{footheadings}}
+\DeclareOptionBeamer{footuniheadings}{\def\f@@t{footuniheadings}}
+\DeclareOptionBeamer{headlogo}{\def\he@d{headlogo}}
+\DeclareOptionBeamer{headtitle}{\def\he@d{headtitle}}
+\DeclareOptionBeamer{headframetitle}{\def\he@d{headframetitle}}
+\DeclareOptionBeamer{headframesubtitle}{\def\he@d{headframesubtitle}}
+\ExecuteOptionsBeamer{uni, footuni, headlogo}
+\ProcessOptionsBeamer\relax
+
+
+% Packages zum CD
+\RequirePackage{./unirostock/beamerfontthemeRostock}
+\RequirePackage[\f@@t, \he@d]{./unirostock/beamerouterthemeRostock}
+\RequirePackage[\he@d]{./unirostock/beamerinnerthemeRostock}
+\RequirePackage[\c@loroption]{./unirostock/beamercolorthemeRostock}
+
+
+% Templates setzen
+\setbeamertemplate{headline}[unirostock]
+\setbeamertemplate{footline}[unirostock]
+\setbeamertemplate{title page}[unirostock]
+\setbeamertemplate{frametitle}[unirostock]
+\setbeamertemplate{background}[unirostock]
+\setbeamertemplate{itemize item}[unirostock]
+\setbeamertemplate{itemize subitem}[unirostock]
+\setbeamertemplate{itemize subsubitem}[unirostock]
+
+
+\mode
+<all>

@@ -1,0 +1,73 @@
+
+\documentclass[10pt]{beamer} % die 10pt sollten festgelegt bleiben, da dies die Groesse der Mathematikschrift etc. beeinflusst
+
+\usepackage[ngerman]{babel}  % deutsche Bezeichnungen und Trennung etc
+\usepackage{hyperref, tikz, pgfplots}        % interne Hyperlinks
+\usepackage[utf8]{inputenc}
+
+\usepackage[ief,footuni, headframelogo]{./unirostock/beamerthemeRostock}
+
+%TODO:Deckblattanordnung überarbeiten
+\title{}
+\subtitle{Master Verteidigung}
+\author{\textsc{Tom Meyer}}
+\date{}
+\institute{Universität Rostock, Institut für Informatik}
+%\titlegraphic{\begin{center}Platz f\"ur ein Logo\\und anderes\end{ce
+\footinstitute{Fakultät für Informatik und Elektrotechnik, Institut für Informatik}
+% eigenes Logo oben rechts hinzufuegen (bitte auf vernuenftiges Format achten - ein zu hohes Logo verschiebt das Layout)
+%\renewcommand{\mylogo}{\includegraphics[width=18.5mm]{institutslogo}}
+
+\begin{document}
+
+\begin{frame}% Titelseite
+  \titlepage
+\end{frame}
+
+\begin{frame}{Struktur der Vortrages}{Damit der H\"orer auch ein wenig durchsieht}
+  \tableofcontents[pausesections]
+\end{frame}
+
+\begin{frame}{Motivation}
+\end{frame}
+
+\begin{frame}{Background}
+\end{frame}
+
+\begin{frame}{Zusammenfassung}
+  
+\end{frame}
+
+\begin{frame}{Auswertung}
+  
+\end{frame}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Einige Beispielfolien}
+
+
+%%%%%%%%%%%% Beispielfolie aus dem BeamerUsersguide %%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Beispiel aus beamerusersguide.pdf}
+\begin{frame}
+  \frametitle{There Is No Largest Prime Number}
+  \framesubtitle{The proof uses \textit{reductio ad absurdum}.}
+  \begin{theorem}
+    There is no largest prime number.
+  \end{theorem}
+  \begin{proof}
+    \begin{enumerate}
+    \item<1-| alert@1> Suppose $p$ were the largest prime number.
+    \item<2-> Let $q$ be the product of the first $p$ numbers.
+    \item<3-> Then $q+1$ is not divisible by any of them.
+    \item<1-> Thus $q+1$ is also prime and greater than $p$.\qedhere
+    \end{enumerate}
+  \end{proof}
+\end{frame}
+
+
+
+\end{document}
+

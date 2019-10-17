@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 #![deny(rust_2018_idioms)]
+#![feature(option_expect_none)]
 
 #[macro_use]
 extern crate log;
@@ -29,8 +30,8 @@ impl rustc_driver::Callbacks for PetriConfig {
 
         compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let (entry_def_id, _) = tcx.entry_fn(LOCAL_CRATE).expect("no main function found!");
-            let mut pass = Translator::new(tcx);
-            pass.translate(entry_def_id);
+            let mut pass = Translator::new(tcx).expect("Unable to create translator");
+            pass.petrify(entry_def_id).expect("translation failed");
         });
 
         compiler.session().abort_if_errors();

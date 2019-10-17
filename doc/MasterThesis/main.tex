@@ -1,0 +1,78 @@
+\documentclass[english,
+    %BCOR%Bindungskorrektur,
+    ]{WissTemplate}
+    %\PassOptionsToPackage{usenames,dvipsnames}{xcolor}
+\usepackage{
+    datetime,
+    ulem,
+    tikz, %grafiken generieren
+    varwidth, %anpassen von seitengrößen
+    enumitem,
+    longtable,
+    pgfplots, %diagramme
+    caption, %tabbellen beschreibungen
+    url,
+    listings %code blöcke
+    }
+\usetikzlibrary{positioning,shapes,shadows,arrows, arrows.meta, calc,
+    automata, petri %petri netze
+    }
+%\usepackage[a4paper,left=27mm,right=27mm, top=1cm, bottom=2cm]{geometry}
+
+\renewcommand{\name}{Tom Meyer}
+\renewcommand{\strasse}{Thomas-Müntzer-Platz 64}
+\renewcommand{\stadt}{18057 Rostock}
+\renewcommand{\matrikel}{Matrikel-Nr.: 8200839}
+\renewcommand{\course}{Informatik}
+\renewcommand{\betreuer}{Prof. Dr. Karsten Wolf}
+\renewcommand{\Titel}{}
+\renewcommand{\Type}{Masterarbeit } %Bachelorarbeit, Projektarbeit, Literaturarbeit, etc.
+
+\definecolor{verylightgray}{rgb}{0.95,0.95,0.95}
+\tolerance=1000 
+\hyphenpenalty=1000
+
+\begin{document}
+
+\include{chapters/titlepage}
+\frontmatter
+\include{chapters/abstract}
+\tableofcontents
+\newpage
+\markright{\nomname}
+\printnomenclature
+%\addcontentsline{toc}{chapter}{\nomname}
+% Abbildungsverzeichnis
+%\newpage
+%\addcontentsline{toc}{chapter}{\listfigurename}
+%\addcontentsline{toc}{chapter}{Abbildungsverzeichnis}
+%\listoffigures
+%\newpage
+% Tabellenverzeichnis
+%\addcontentsline{toc}{chapter}{\listtablename}
+%\listoftables
+\mainmatter
+
+\include{chapters/introduction}
+\include{chapters/relatedWork}
+\include{chapters/approach}
+\include{chapters/conclusion}
+\include{chapters/futureWork}
+\bibliography{IEEEabrv,literature}
+\bibliographystyle{IEEEtran}
+
+%% Zum Abschluss die Eidesstattliche Versicherung
+\newpage
+\thispagestyle{empty}
+\label{EidesstattlicheVersicherung}
+\vspace*{8cm}% Abstand zum oberen Seitenrand
+{\parindent 0pt
+    \textbf{\Huge{Eidesstattliche Versicherung}}\vspace{10mm}\\
+    Hiermit versichere ich, dass ich die vorliegende Arbeit selbstständig verfasst und keine anderen als die angegebenen Quellen und Hilfsmittel benutzt habe, alle Ausführungen, die anderen Schriften wörtlich oder sinngemäß entnommen wurden, kenntlich gemacht sind und die Arbeit in gleicher oder ähnlicher Fassung noch nicht Bestandteil einer Studien- oder Prüfungsleistung war.
+    \\[2cm]}
+Rostock, 02. März 2018
+\\[3cm]
+\rule{6cm}{0.5pt}\\
+\parbox[l][1cm][c]{6cm}{\hfill\name\hfill\vbox{}}
+
+\end{document}

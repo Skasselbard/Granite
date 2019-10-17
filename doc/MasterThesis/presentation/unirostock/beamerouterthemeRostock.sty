@@ -1,0 +1,143 @@
+%% 
+%% This is file 'beamerouterthemeRostock.sty'
+%% 
+%% by Mathias Winkel
+%%
+%% Problems, bugs and comments to 
+%% mathias.winkel2@uni-rostock.de
+%%
+
+
+\ProvidesPackage{./unirostock/beamerouterthemeRostock}
+
+\mode<presentation>
+
+% Zaehler zur Einstellung des Fusszeilenmodus
+\newcount\f@@tmode \f@@tmode0
+\DeclareOptionBeamer{footuni}{\def\f@@tmode{0}}
+\DeclareOptionBeamer{foottitle}{\def\f@@tmode{1}}
+\DeclareOptionBeamer{footheadings}{\def\f@@tmode{2}}
+\DeclareOptionBeamer{footuniheadings}{\def\f@@tmode{3}}
+
+% Zaehler zur Einstellung des Fusszeilenmodus
+\newcount\he@dmode \he@dmode0
+\DeclareOptionBeamer{headlogo}{\def\he@dmode{0}}
+\DeclareOptionBeamer{headtitle}{\def\he@dmode{1}}
+\DeclareOptionBeamer{headframetitle}{\def\he@dmode{2}}
+\DeclareOptionBeamer{headframesubtitle}{\def\he@dmode{3}}
+
+\ProcessOptionsBeamer\relax
+
+
+
+% Seitenraender
+\setbeamersize{text margin left=26\mm,text margin right=17.5\mm}
+
+
+% Mehr Freiheit bei der Fusszeile ermoeglichen
+% Selbst definierte Makros
+\newcommand{\mylogo}{}
+\def\titleimage#1{\edef\@titleimage{#1}}  % \titleimage{bildname.xyz} - Dateinamen fuer das Titelbild festlegen
+\def\@copyright{\textcopyright~\the\year}
+\def\@university{Universit\"at Rostock}
+\def\@institute{Fakult\"at f\"ur Blindtext- und Blindtextwissenschaften}
+\def\@footauthor{\insertshortauthor}
+\def\@foottitle{\insertshorttitle}
+\def\footinstitute#1{\def\@institute{#1}} % Umstellung des Institutsnamens in der Fusszeile mit \footinstitute{bla}
+\def\paragraph#1{\par\textbf{#1}\par}
+
+\def\ifUnDefinedCs#1{\expandafter\ifx\csname#1\endcsname\relax}
+
+
+% Kopfzeile: UniLogo
+\defbeamertemplate*{headline}{unirostock}%
+{ 
+ \vskip  9.4\mm \hskip 13\mm \begin{tabular}{lr}
+                                \includegraphics[width=89\mm]{./unirostock/UNI-Logo_Siegel_4c_115mm} &
+                                \begin{minipage}[b][11.0\mm][b]{130\mm}
+                                  \ifUnDefinedCs{inserttitle}\def\inserttitle{}\fi%
+                                  \ifUnDefinedCs{insertframetitle}\def\insertframetitle{}\fi%
+                                  \ifUnDefinedCs{insertframesubtitle}\def\insertframesubtitle{}\fi%
+                                  \raggedleft
+                                  \ifcase\he@dmode % Logo-Kopfzeile
+                                    \mylogo
+                                  \or              % Vortragstitel-Kopfzeile
+                                     \usebeamerfont{headtitle}\usebeamercolor[fg]{headtitle}\strut\inserttitle\strut
+                                  \or              % Frametitle-Kopfzeile
+                                     \usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}\strut\insertframetitle\strut
+                                  \or              % Frametitle-Kopfzeile
+                                     \usebeamerfont{frametitle}\usebeamercolor[fg]{frametitle}\strut\insertframetitle\strut\par
+                                     \usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\strut\insertframesubtitle\strut
+                                  \fi
+                                \end{minipage}
+                             \end{tabular}%
+ \vskip  7.3\mm %Schritt bis zum bunten Rahmen
+ \vskip 15.0\mm % Rand innerhalb des bunten Rahmens
+}
+
+
+% Hintergrund: blauer Rahmen
+\defbeamertemplate*{background}{unirostock}
+{
+ \begin{pgfpicture}%
+    % Blauer Rahmen
+    \pgfsetlinewidth{0.5\pt}%
+    \usebeamercolor{palette primary}%
+    \color{fg}%
+    \pgfpathmoveto{\pgfpoint{0.0\mm}{0.0\mm}}%
+    \pgfpathlineto{\pgfpoint{236\mm}{0.0\mm}}%
+    \pgfpatharc{90}{0}{8\mm}%
+    \pgfpathlineto{\pgfpoint{244\mm}{-155.5\mm}}%
+    \pgfusepath{stroke}%
+    \pgfsetbaseline{35.0\mm}
+  \end{pgfpicture}%
+}
+
+% Fusszeile
+\defbeamertemplate*{footline}{unirostock}%
+{
+  \vspace*{5.17635\mm} % Rand oberhalb der Fusszeile
+  \leavevmode%
+  \hbox{%                  % 244\mm zzgl. der Liniendicke (0.5\pt)
+   \begin{beamercolorbox}[wd=244.17635\mm,ht=5\mm,dp=3\mm,left]{author in head/foot}%
+    \hspace*{26\mm}%
+    \usebeamerfont{date in head/foot}\insertshortdate{}%
+    \hskip 2ex minus 1ex%
+    \ifcase\f@@tmode % Uni-Fusszeile
+         \@copyright%
+         \hskip 2ex minus 1ex%
+         \usebeamerfont{university in head/foot}\MakeUppercase{\@university}%
+      \ifx\@institute\@empty\else
+         \ | \ %
+         \usebeamerfont{institute in head/foot}\MakeUppercase{\@institute}%
+      \fi%
+    \or % Title-Fusszeile
+      \hskip 2ex minus 1ex%
+      \usebeamerfont{title in head/foot}\MakeUppercase{\insertshorttitle}
+      \ | \ %
+      \usebeamerfont{author in head/foot}\MakeUppercase{\insertshortauthor}%
+    \or %Headings-Fusszeile
+      \hskip 2ex minus 1ex%
+      \usebeamerfont{section in head/foot}\insertsectionhead
+      \ifx\insertsubsectionhead\@empty\else{\ | \ }\fi%
+      \usebeamerfont{subsection in head/foot}\insertsubsectionhead
+    \or %Headings-Fusszeile incl. Author und Uni
+      \hskip 1ex minus 2ex%
+      \usebeamerfont{author in head/foot}\MakeUppercase{\insertshortauthor}
+      \usebeamerfont{author in head/foot}{\ (\@university)}
+      \hskip 4ex minus 1ex%
+      \usebeamerfont{section in head/foot}\insertsectionhead
+      \ifx\insertsubsectionhead\@empty\else{\ | \ }\fi%
+      \usebeamerfont{subsection in head/foot}\insertsubsectionhead
+    \fi
+    \hskip 0pt plus 1filll % rechtsbuendige Ausrichtung fuer die Foliennummer
+    \insertframenumber{} / \inserttotalframenumber\hspace*{2ex} 
+  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+
+
+
+
+\mode
+<all>

@@ -1,7 +1,4 @@
-mod basic_block;
-mod petri_net;
-mod pnml;
+pub mod basic_block;
+pub mod function;
 mod tests;
 mod trait_impls;
-
-use petri_net::{PetriNet, Place, Transition, P, T};

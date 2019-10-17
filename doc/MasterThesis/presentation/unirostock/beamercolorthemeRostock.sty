@@ -1,0 +1,106 @@
+%% 
+%% This is file 'beamercolorthemeRostock.sty'
+%% 
+%% by Mathias Winkel
+%%
+%% Problems, bugs and comments to 
+%% mathias.winkel2@uni-rostock.de
+%%
+
+
+\ProvidesPackage{./unirostock/beamercolorthemeRostock}
+
+%%%%%%%% Farboptionen und Standard-Titelbild fuer die einzelnen Bereiche %%%%%%%%
+
+
+\DeclareOptionBeamer{uni}{\definecolor{colorscheme}{cmyk}{1.00, 0.75, 0.00, 0.00}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-uni}}
+\DeclareOptionBeamer{inf}{\definecolor{colorscheme}{cmyk}{0.40, 0.00, 1.00, 0.00}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-inf}}
+\DeclareOptionBeamer{msf}{\definecolor{colorscheme}{cmyk}{1.00, 0.30, 0.00, 0.00}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-msf}}
+\DeclareOptionBeamer{ief}{\definecolor{colorscheme}{cmyk}{0.90, 0.30, 0.00, 0.00}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-ief}}
+\DeclareOptionBeamer{mnf}{\definecolor{colorscheme}{cmyk}{0.00, 1.00, 1.00, 0.40}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-mnf}}
+\DeclareOptionBeamer{mef}{\definecolor{colorscheme}{cmyk}{0.45, 1.00, 0.50, 0.20}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-mef}}
+\DeclareOptionBeamer{juf}{\definecolor{colorscheme}{cmyk}{0.00, 1.00, 0.80, 0.00}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-juf}}
+\DeclareOptionBeamer{wsf}{\definecolor{colorscheme}{cmyk}{0.10, 0.00, 0.00, 0.40}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-wsf}}
+\DeclareOptionBeamer{auf}{\definecolor{colorscheme}{cmyk}{1.00, 0.00, 1.00, 0.50}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-auf}}
+\DeclareOptionBeamer{thf}{\definecolor{colorscheme}{cmyk}{0.15, 0.90, 1.00, 0.05}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-thf}}
+\DeclareOptionBeamer{phf}{\definecolor{colorscheme}{cmyk}{0.80, 1.00, 0.00, 0.00}%
+                          \definecolor{colorschemeinv}{rgb}{1.00, 1.00, 1.00}%
+                          \def\@titleimage{./unirostock/title-phf}}
+
+\ExecuteOptionsBeamer{uni}
+\ProcessOptionsBeamer\relax
+
+
+\mode<presentation>
+
+
+% Farben
+\setbeamercolor*{palette primary}{fg=colorscheme}
+\setbeamercolor*{palette primary inverted}{bg=colorscheme, fg=colorschemeinv}
+\setbeamercolor*{palette secondary}{fg=colorscheme!60!white, bg=colorschemeinv}
+\setbeamercolor*{palette secondary inverted}{bg=colorscheme!60!white, fg=colorscheme}
+\setbeamercolor*{palette tertiary}{fg=colorscheme!20!white, bg=colorschemeinv}
+\setbeamercolor*{palette tertiary inverted}{bg=colorscheme!20!white, fg=colorschemeinv}
+\setbeamercolor*{palette quaternary}{fg=white,bg=black}
+
+\setbeamercolor*{author in head/foot}{parent=palette primary inverted}
+\setbeamercolor*{frametitle}{parent=palette primary}
+\setbeamercolor*{structure}{parent=palette primary}
+\setbeamercolor*{section in toc}{parent=structure}
+\setbeamercolor*{section in toc shaded}{parent=section in toc}
+\setbeamercolor*{subsection in toc}{}
+\setbeamercolor*{subsection in toc shaded}{parent=subsection in toc}
+\setbeamercolor*{title}{fg=black}
+\setbeamercolor*{author}{parent=title}
+\setbeamercolor*{institute}{parent=title}
+\setbeamercolor*{titlegraphic}{parent=title}
+\setbeamercolor*{headtitle}{parent=palette primary}
+\setbeamercolor*{alerted text}{parent=palette primary}
+
+% Farben fuer Bloecke
+\setbeamercolor{block title}{parent=palette primary inverted}
+\setbeamercolor{block title alerted}{parent=palette primary inverted}
+\setbeamercolor{block title example}{parent=normal text, bg=palette secondary.fg}
+
+\setbeamercolor{block body}{parent=normal text}
+\setbeamercolor{block body alerted}{parent=palette tertiary inverted, fg=normal text.fg}
+\setbeamercolor{block body example}{parent=normal text}
+
+
+% Farben fuer Tabellen (muessen einmal aktiviert werden)
+\usebeamercolor{palette primary}
+\usebeamercolor{palette secondary}
+\usebeamercolor{palette tertiary}
+\usebeamercolor{palette quaternary}
+\def\zfA{\rowcolor{palette primary.fg}}
+\def\zfB{\rowcolor{palette secondary.fg}}
+\def\zfC{\rowcolor{palette tertiary.fg}}
+\def\zfD{\rowcolor{palette quaternary.fg}}
+
+% Farben fuer Abdeckung / schrittweises Aufdecken
+\setbeamercovered{transparent}
+
+
+
+\mode
+<all>

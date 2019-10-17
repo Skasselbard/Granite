@@ -1,0 +1,134 @@
+%% 
+%% This is file 'beamerinnerthemeRostock.sty'
+%% 
+%% by Mathias Winkel
+%%
+%% Problems, bugs and comments to 
+%% mathias.winkel2@uni-rostock.de
+%%
+
+
+\ProvidesPackage{./unirostock/beamerinnerthemeRostock}
+
+% Zaehler zur Einstellung des Fusszeilenmodus
+\newcount\he@dmode \he@dmode0
+\DeclareOptionBeamer{headlogo}{\def\he@dmode{0}}
+\DeclareOptionBeamer{headtitle}{\def\he@dmode{1}}
+\DeclareOptionBeamer{headframetitle}{\def\he@dmode{2}}
+\DeclareOptionBeamer{headframesubtitle}{\def\he@dmode{3}}
+
+\ProcessOptionsBeamer\relax
+
+\mode<presentation>
+
+
+% abgerundete Bl�cke ohne Schatten
+\setbeamertemplate{blocks}[rounded][shadow=true]
+
+
+% Navigationssymbole ausblenden
+\setbeamertemplate{navigation symbols}{}
+
+
+% parskip in der TOC auf 0 setzen
+\let\oldt@bleofcontents\tableofcontents
+\let\oldp@rskip\parskip
+\renewcommand\tableofcontents[1][]{\vskip 1em\parskip\z@ \oldt@bleofcontents[#1] \parskip\oldp@rskip}
+
+
+% Titelseite
+\defbeamertemplate*{title page}{unirostock}[1][]
+{
+  \vspace*{-24.27635\mm}\hspace*{-28.282\mm}
+  \newlength\@imgshift \@imgshift-147.5\mm \advance\@imgshift by \baselineskip
+  \raisebox{\@imgshift}{\makebox[0pt][l]{\ifx\@titleimage\@empty\else\includegraphics[width=245\mm,height=147.5\mm]{\@titleimage} \fi}}%
+  \raisebox{8.47635\mm}{\hspace*{-0.72\mm}\makebox[0pt][l]{
+  \begin{pgfpicture}
+     % Weisser Rand
+     \usebeamercolor{palette secondary}
+     \color{bg}
+     \pgfsetlinewidth{0\pt}
+     \pgfpathmoveto{\pgfpoint{0.0\mm}{0.0\mm}}
+     \pgfpathlineto{\pgfpoint{236\mm}{0.0\mm}}
+     \pgfpatharc{90}{0}{8\mm}
+     \pgfpathlineto{\pgfpoint{244\mm}{-155.5\mm}}
+     \pgfpathlineto{\pgfpoint{254\mm}{-155.5\mm}}
+     \pgfpathlineto{\pgfpoint{254\mm}{   7.3\mm}}
+     \pgfpathlineto{\pgfpoint{0.0\mm}{   7.3\mm}}
+     \pgfpathclose
+     \pgfusepath{fill}
+     % Blauer Rahmen
+     \pgfsetlinewidth{0.5\pt}%
+     \usebeamercolor{palette primary}%
+     \color{fg}%
+     \pgfpathmoveto{\pgfpoint{0.0\mm}{0.0\mm}}%
+     \pgfpathlineto{\pgfpoint{236\mm}{0.0\mm}}%
+     \pgfpatharc{90}{0}{8\mm}%
+     \pgfpathlineto{\pgfpoint{244\mm}{-155.5\mm}}%
+     \pgfusepath{stroke}%
+     \pgfsetbaseline{0\mm}
+   \end{pgfpicture}
+   }}
+   \hfill
+   \begin{minipage}[t]{\textwidth}
+   \newdimen\@temp \@temp15\mm \advance\@temp by -\baselineskip \vskip \@temp
+   \hskip 0.2\textwidth
+     \begin{minipage}[t]{0.8\textwidth}
+        \begin{beamercolorbox}[sep=0.2ex,left,rounded=true,wd=\textwidth]{title}
+          \usebeamerfont{title}\inserttitle\par%
+          \ifx\insertsubtitle\@empty%
+          \else%
+            \vskip0.25em%
+            {\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\insertsubtitle\par}%
+          \fi%
+     \end{beamercolorbox}%
+     \vskip1em\par
+     \begin{beamercolorbox}[sep=0.2ex,left,rounded=true]{author}
+       \usebeamerfont{author}\insertauthor
+     \end{beamercolorbox}
+     \begin{beamercolorbox}[sep=0.2ex,left,rounded=true]{institute}
+       \usebeamerfont{institute}\insertinstitute
+     \end{beamercolorbox}
+     \begin{beamercolorbox}[sep=0.2ex,left,rounded=true]{titlegraphic}
+        \inserttitlegraphic\par
+     \end{beamercolorbox}
+      \end{minipage}
+   \end{minipage}\par\vbox{}
+}
+
+
+% Frametitle
+\defbeamertemplate*{frametitle}{unirostock}
+{
+  \vskip-1.5ex%
+  \ifnum\he@dmode<3
+  \begin{beamercolorbox}[sep=0.2ex,dp=0.3ex,left,wd=210.5\mm,rounded=true]{frametitle}%
+    \ifnum\he@dmode<2\usebeamerfont{frametitle}\strut\insertframetitle\strut\par\else\vskip-1ex\fi%
+    {%
+      \ifx\insertframesubtitle\@empty\else%
+        {\usebeamerfont{framesubtitle}\usebeamercolor[fg]{framesubtitle}\insertframesubtitle\strut\par}%
+      \fi%
+    }%
+    \vskip-1ex%
+  \end{beamercolorbox}%
+  \else\vskip-1ex\fi
+}
+
+
+
+% Aufzaehlungen etc
+% Itemize items
+\defbeamertemplate*{itemize item}{unirostock}{\hbox{\Large\textbullet}}
+\defbeamertemplate*{itemize subitem}{unirostock}{\hbox{\textbullet}}
+\defbeamertemplate*{itemize subsubitem}{unirostock}{\small\raise0.5pt\hbox{--}}
+% % Enumerate items
+% \defbeamertemplateparent{enumerate items}{enumerate item,enumerate subitem,enumerate subsubitem,enumerate mini}{}
+% \defbeamertemplate*{enumerate item}{default}{\insertenumlabel.}
+% \defbeamertemplate*{enumerate subitem}{default}{\insertenumlabel.\insertsubenumlabel}
+% \defbeamertemplate*{enumerate subsubitem}{default}{\insertenumlabel.\insertsubenumlabel.\insertsubsubenumlabel}
+% \defbeamertemplate*{enumerate mini template}{default}{\insertenumlabel}
+
+
+
+\mode
+<all>

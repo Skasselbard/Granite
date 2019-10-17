@@ -1,3 +1,5 @@
+use crate::petri_net::function::Function;
+use pnml::{NodeRef, PNMLDocument, PetriError, PetriNetRef, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir::visit::Visitor;
 use rustc::mir::visit::*;
@@ -28,33 +30,64 @@ impl<T> CallStack<T> {
             Some(&self.stack[self.stack.len() - 1])
         }
     }
+
+    pub fn peek_mut(&mut self) -> Option<&mut T> {
+        if self.stack.is_empty() {
+            None
+        } else {
+            let len = self.stack.len();
+            Some(&mut self.stack[len - 1])
+        }
+    }
 }
 
 pub struct Translator<'tcx> {
     tcx: TyCtxt<'tcx>,
-    call_stack: CallStack<(DefId, &'tcx Body<'tcx>)>,
+    call_stack: CallStack<(Function<'tcx>)>,
+    pnml_doc: PNMLDocument,
+    net_ref: PetriNetRef,
 }
 
 impl<'tcx> Translator<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
-        Translator {
+    pub fn new(tcx: TyCtxt<'tcx>) -> Result<Self> {
+        let mut pnml_doc = PNMLDocument::new();
+        //TODO: find a descriptive name e.g. name of the program
+        let net_ref = pnml_doc.add_petri_net(None);
+        Ok(Translator {
             tcx,
             call_stack: CallStack::new(),
-        }
+            pnml_doc,
+            net_ref,
+        })
     }
-    pub fn translate<'a>(&mut self, function: DefId) {
-        info!(
-            "ENTERING function: {:?}",
-            function.describe_as_module(self.tcx)
-        );
+
+    pub fn petrify(&mut self, main_fn: DefId) -> Result<()> {
+        let start_place = {
+            let net = self.net()?;
+            let page = net.add_page(Some("entry"));
+            let mut place = net.add_place(&page)?;
+            place.initial_marking(net, 1)?;
+            place
+        };
+        self.translate(main_fn, start_place)?;
+        print!("{}", self.pnml_doc.to_xml()?);
+        Ok(())
+    }
+
+    fn translate<'a>(&mut self, function: DefId, start_place: NodeRef) -> Result<()> {
+        let fn_name = function.describe_as_module(self.tcx);
+        info!("ENTERING function: {:?}", fn_name);
         let body = self.tcx.optimized_mir(function);
-        self.call_stack.push((function, body));
+        let petri_function = Function::new(function, body, self.net()?, start_place, &fn_name)?;
+        self.call_stack.push(petri_function);
         self.visit_body(body);
         self.call_stack.pop();
-        info!(
-            "LEAVING function: {:?}",
-            function.describe_as_module(self.tcx)
-        );
+        info!("LEAVING function: {:?}", fn_name);
+        Ok(())
+    }
+
+    fn net(&mut self) -> Result<&mut pnml::PetriNet> {
+        self.pnml_doc.petri_net_data(self.net_ref)
     }
 }
 
@@ -117,20 +150,31 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     ) {
         self.super_ascribe_user_ty(place, variance, user_ty, location);
     }
-    //End statement visists
+    //End statement visits
 
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, location: Location) {
         //trace!("{:?}", terminator);
+        //warn!("Successors: {:?}", terminator.successors());
         self.super_terminator(terminator, location);
     }
 
     fn visit_terminator_kind(&mut self, kind: &TerminatorKind<'tcx>, location: Location) {
         trace!("{:?}", kind);
         use rustc::mir::TerminatorKind::*;
+        let net = self
+            .pnml_doc
+            .petri_net_data(self.net_ref)
+            .expect("corrupted net reference");
         match kind {
-            Return => trace!("Return"),
+            Return => {
+                trace!("Return");
+            }
 
-            Goto { .. } => trace!("Goto"),
+            Goto { target } => {
+                trace!("Goto");
+                let function = self.call_stack.peek_mut().expect("empty call stack");
+                function.goto(net, target).expect("Goto Block failed");
+            }
 
             SwitchInt { .. } => trace!("SwitchInt"),
 
@@ -142,8 +186,8 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 let sty = {
                     match func {
                         Operand::Copy(ref place) | Operand::Move(ref place) => {
-                            let (_, body) = self.call_stack.peek().expect("peeked empty stack");
-                            let decls = body.local_decls();
+                            let function = self.call_stack.peek().expect("peeked empty stack");
+                            let decls = function.mir_body.local_decls();
                             let place_ty: &mir::tcx::PlaceTy<'tcx> = &place.base.ty(decls);
                             place_ty.ty
                         }
@@ -163,20 +207,21 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 };
                 if self.tcx.is_foreign_item(function) {
                     warn!("found foreign item: {:?}", function);
-                //panic!("");
-                //emulate_foreign_item(ecx, instance, args, dest, ret);
                 } else {
                     if !skip_function(self.tcx, function) {
                         if !self.tcx.is_mir_available(function) {
                             warn!("Could not find mir: {:?}", function);
                         } else {
-                            self.translate(function);
+                            panic!("translate call");
+                            //self.translate(function);
                         }
                     }
                 }
             }
 
-            Drop { .. } => {}
+            Drop { .. } => {
+                trace! {"drop"}
+            }
 
             Assert { .. } => warn!("assert"),
 
@@ -289,6 +334,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
 }
 
 fn skip_function<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    //FIXME: check if a call for a panic always result in a panic (it might be caught later)
     if tcx.lang_items().items().contains(&Some(def_id)) {
         debug!("LangItem: {:?}", def_id);
     };

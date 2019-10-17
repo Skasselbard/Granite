@@ -1,0 +1,52 @@
+\hypersetup{
+	pdftitle   = {\Titel},
+	pdfauthor  = {\name, \matrikel},
+	pdfsubject = {\Type betreut von \betreuer}
+}
+
+\begin{titlepage}
+	\newlength{\BCORoffset}
+	\ifdefined\BCOR
+		\setlength{\BCORoffset}{0.5cm}
+	\else
+		\setlength{\BCORoffset}{0cm}
+	\fi
+	\linespread{1.2} % 1,5facher Zeilenabstand
+	\begin{tikzpicture}[remember picture,overlay, anchor = west]
+
+		\coordinate (d) at ([yshift=-6cm, xshift=-2cm+\BCORoffset] current page.north east);
+		\coordinate (c) at ([yshift=-6cm, xshift=2cm+\BCORoffset] current page.north west);
+		\coordinate (b) at ([yshift=2.25cm, xshift=-2cm+\BCORoffset] current page.south east);
+		\coordinate (a) at ([yshift=2.25cm, xshift=2cm+\BCORoffset] current page.south west);
+		\coordinate (middle) at ([yshift=-6cm, xshift=\paperwidth/2+\BCORoffset] current page.north west);
+		\draw[line width=2,rounded corners=10pt,uniblau] (a) -- (c) -- (d) -- (b);
+		
+		\node[anchor=west,inner sep=0,outer sep=0] (logo) at ([yshift=-3cm, xshift=2cm+\BCORoffset] current page.north west) {
+			\includegraphics[width=115mm]{Icons/UNI-Logo_Siegel_4c_115mm}
+		};
+		
+		\node[fill=uniblau,draw=uniblau,line width=2,anchor=north,minimum height=2.25cm, minimum width=\paperwidth-4cm,text=white,font=\small,text width=\paperwidth-4.5cm] (names)
+		at ([yshift=2.25cm,xshift=\BCORoffset]current page.south) {
+			UNIVERSITÄT ROSTOCK \textbar \ FAKULTÄT FÜR INFORMATIK UND ELEKTROTECHNIK\\
+			Lehrstuhl für Theoretische Informatik\\
+			Albert-Einstein-Straße 22, 18059 Rostock \textbar \ Tel: +49 381 498 7641	
+		};
+		
+		\node[font=\Huge\bfseries,anchor=center,] (typenode) at ([yshift=-3cm] middle) {\Type};
+		
+		\node[font=\LARGE\bfseries,anchor=center,] (titelnode) at ([yshift=-2.5cm] typenode) {\Titel};
+		
+		\node[font=\large,anchor=center,text width=\paperwidth-4.5cm,align=center] (authornode) at ([yshift=-3.5cm] titelnode) {
+			\textsc{Vorgelegt von}:\\ \bfseries\name\\\mdseries \textsc{\matrikel}
+		};
+		
+		\node[font=\large,anchor=center,text width=\paperwidth-4.5cm,align=center] (abgabenode) at ([yshift=-4.5cm] authornode) {
+			\textsc{Eingereicht am:}\\ datum
+		};
+		
+		\node[font=\large,anchor=center,text width=\paperwidth-4.5cm,align=center] (supervisornode) at ([yshift=-4.0cm] abgabenode) {
+			\textsc{Betreuer:}\\\betreuer
+		};
+	\end{tikzpicture}
+\end{titlepage}
+\restoregeometry

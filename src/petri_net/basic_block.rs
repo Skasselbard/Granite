@@ -1,18 +1,7 @@
-use crate::petri_net::{self};
+use pnml;
+use pnml::{NodeRef, PageRef, PetriNet, Result};
 use rustc::mir;
 use std::clone::Clone;
-
-// Make the types readable
-type TransitionAnnotation = ();
-type PetriNet = petri_net::PetriNet<PlaceAnnotation, TransitionAnnotation>;
-type Place<'mir> = petri_net::Place<'mir, PlaceAnnotation, TransitionAnnotation>;
-type Transition<'mir> = petri_net::Transition<'mir, PlaceAnnotation, TransitionAnnotation>;
-
-#[derive(Hash, Eq, PartialEq, Copy, Clone)]
-pub enum PlaceAnnotation {
-    Start,
-    End,
-}
 
 //    .-----.
 // .-( start )------------------------------------------.
@@ -45,32 +34,40 @@ pub enum PlaceAnnotation {
 // ||  .-----.      .-.     .-.     .-.      .-----.  | |
 // ''-( end_1 )----(   )---(   )---(   )----( end_N )-'-'
 //     '-----'      '-'     '-'     '-'      '-----'
-#[derive(Clone)]
-pub struct BasicBlock<'mir> {
-    pub mir_bb: &'mir mir::BasicBlockData<'mir>,
-    pub net: PetriNet,
-
+#[derive(Debug)]
+pub struct BasicBlock {
+    page: pnml::PageRef,
+    start_place: NodeRef,
+    end_place: NodeRef,
     pub statements: Vec<Statement>,
-    phantom: (), // enforce constructor build
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Statement {}
 
-impl<'mir> BasicBlock<'mir> {
-    pub fn new(mir_bb: &'mir mir::BasicBlockData<'mir>) -> Self {
-        let mut net = PetriNet::new();
-        // TODO: add places
-        net.add_place(PlaceAnnotation::Start, 0);
-        net.add_place(PlaceAnnotation::End, 0);
+impl BasicBlock {
+    pub fn new<'net>(
+        net: &'net mut PetriNet,
+        page: &PageRef,
+        start_place: &NodeRef,
+    ) -> Result<Self> {
+        let page = page.clone();
+        let start_place = start_place.clone();
+        let end_place = net.add_place(&page)?;
         // TODO: add flow
         let statements = Vec::new();
         //TODO: add statements
-        BasicBlock {
-            mir_bb,
-            net,
+        Ok(BasicBlock {
+            page,
+            start_place,
+            end_place,
             statements,
-            phantom: (),
-        }
+        })
+    }
+    pub fn start_place(&self) -> &NodeRef {
+        &self.start_place
+    }
+    pub fn end_place(&self) -> &NodeRef {
+        &self.end_place
     }
 }
