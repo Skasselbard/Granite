@@ -43,7 +43,10 @@ pub struct BasicBlock {
 }
 
 #[derive(Clone, Debug)]
-pub struct Statement {}
+pub struct Statement {
+    start_place: NodeRef,
+    end_place: NodeRef,
+}
 
 impl BasicBlock {
     pub fn new<'net>(
@@ -62,6 +65,38 @@ impl BasicBlock {
             start_place,
             end_place,
             statements,
+        })
+    }
+    pub fn add_statement<'net>(&mut self, net: &'net mut PetriNet) -> Result<()> {
+        let start_place = {
+            if let Some(statement) = self.statements.last() {
+                statement.start_place().clone()
+            } else {
+                net.add_place(&self.page)?
+            }
+        };
+        self.statements
+            .push(Statement::new(net, &self.page, &start_place)?);
+        Ok(())
+    }
+    pub fn start_place(&self) -> &NodeRef {
+        &self.start_place
+    }
+    pub fn end_place(&self) -> &NodeRef {
+        &self.end_place
+    }
+}
+
+impl Statement {
+    pub fn new<'net>(
+        net: &'net mut PetriNet,
+        page: &PageRef,
+        start_place: &NodeRef,
+    ) -> Result<Self> {
+        let end_place = net.add_place(page)?;
+        Ok(Statement {
+            start_place: start_place.clone(),
+            end_place,
         })
     }
     pub fn start_place(&self) -> &NodeRef {

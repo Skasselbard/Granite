@@ -1,15 +1,33 @@
 // build on https://rust-lang-nursery.github.io/cli-wg/tutorial/testing.html#testing-cli-applications-by-running-them
 use assert_cmd::prelude::*; // Add methods on commands
-use predicates::prelude::*;
-use std::process::{Command, Stdio}; // Run programs // Used for writing assertions
-#[test]
-fn minimal_program_test() -> Result<(), Box<std::error::Error>> {
+                            // use predicates::prelude::*;
+use std::process::Command; // Run programs // Used for writing assertions
+
+fn test_program(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::main_binary()?;
-    cmd.arg("tests/sample_programs/minimal_program.rs");
+    cmd.arg(path);
+    cmd.env("RUST_BACKTRACE", "1");
     cmd.env("RUST_LOG", "trace");
     let result = cmd.assert().success();
     // run 'cargo test -- --nocapture' to see the actual output
     let output = result.get_output();
-    println!("{}", String::from_utf8_lossy(&output.stdout));
+    if output.status.success() {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    };
     Ok(())
+}
+
+#[test]
+fn minimal_program_test() {
+    test_program("tests/sample_programs/minimal_program.rs").unwrap();
+}
+
+#[test]
+fn minimal_nondeadlock_test() {
+    test_program("tests/sample_programs/minimal_nondeadlock.rs").unwrap();
+}
+
+#[test]
+fn minimal_deadlock_test() {
+    test_program("tests/sample_programs/minimal_deadlock.rs").unwrap();
 }

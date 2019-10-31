@@ -1,5 +1,5 @@
 use crate::petri_net::function::Function;
-use pnml::{NodeRef, PNMLDocument, PetriError, PetriNetRef, Result};
+use pnml::{NodeRef, PNMLDocument, PageRef, PetriNetRef, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir::visit::Visitor;
 use rustc::mir::visit::*;
@@ -39,6 +39,10 @@ impl<T> CallStack<T> {
             Some(&mut self.stack[len - 1])
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
 }
 
 pub struct Translator<'tcx> {
@@ -46,6 +50,22 @@ pub struct Translator<'tcx> {
     call_stack: CallStack<(Function<'tcx>)>,
     pnml_doc: PNMLDocument,
     net_ref: PetriNetRef,
+    root_page: PageRef,
+}
+
+macro_rules! net {
+    ($translator:ident) => {
+        $translator
+            .pnml_doc
+            .petri_net_data($translator.net_ref)
+            .expect("corrupted net reference")
+    };
+}
+
+macro_rules! function {
+    ($translator:ident) => {
+        $translator.call_stack.peek_mut().expect("empty call stack")
+    };
 }
 
 impl<'tcx> Translator<'tcx> {
@@ -53,41 +73,88 @@ impl<'tcx> Translator<'tcx> {
         let mut pnml_doc = PNMLDocument::new();
         //TODO: find a descriptive name e.g. name of the program
         let net_ref = pnml_doc.add_petri_net(None);
+        let root_page = pnml_doc
+            .petri_net_data(net_ref)
+            .expect("corrupted net reference")
+            .add_page(Some("entry"));
         Ok(Translator {
             tcx,
             call_stack: CallStack::new(),
             pnml_doc,
             net_ref,
+            root_page,
         })
     }
 
     pub fn petrify(&mut self, main_fn: DefId) -> Result<()> {
         let start_place = {
-            let net = self.net()?;
-            let page = net.add_page(Some("entry"));
-            let mut place = net.add_place(&page)?;
+            let net = net!(self);
+            let mut place = net.add_place(&self.root_page)?;
             place.initial_marking(net, 1)?;
             place
         };
-        self.translate(main_fn, start_place)?;
+        //TODO: check destination
+        self.translate(main_fn, start_place, &Vec::new(), &None)?;
         print!("{}", self.pnml_doc.to_xml()?);
         Ok(())
     }
 
-    fn translate<'a>(&mut self, function: DefId, start_place: NodeRef) -> Result<()> {
+    fn translate<'a>(
+        &mut self,
+        function: DefId,
+        start_place: NodeRef,
+        args: &Vec<Operand<'_>>,
+        destination: &Option<(Place<'tcx>, mir::BasicBlock)>,
+    ) -> Result<()> {
         let fn_name = function.describe_as_module(self.tcx);
         info!("ENTERING function: {:?}", fn_name);
         let body = self.tcx.optimized_mir(function);
-        let petri_function = Function::new(function, body, self.net()?, start_place, &fn_name)?;
+        // if we come from the main we ignore the arguments
+        // else we pass the locals for the function arguments
+        let args = if args.is_empty() {
+            std::collections::HashMap::new()
+        } else {
+            let mut map = std::collections::HashMap::new();
+            for arg in args {
+                let local = op_to_local(arg);
+                map.insert(local.clone(), function!(self).get_local(local)?.clone());
+            }
+            map
+        };
+        // if we got a none we stepped into a converging function
+        // if we come from the main we create a local for a return
+        // else we get the return place from the caller
+        let destination = {
+            match destination {
+                None => None,
+                Some((place, _block)) => {
+                    let local = place_to_local(place);
+                    if self.call_stack.is_empty() {
+                        let mut place = net!(self).add_place(&self.root_page)?;
+                        Some((
+                            local.clone(),
+                            crate::petri_net::function::Local::new(net!(self), &self.root_page)?,
+                        ))
+                    } else {
+                        Some((local.clone(), function!(self).get_local(local)?.clone()))
+                    }
+                }
+            }
+        };
+        let petri_function = Function::new(
+            function,
+            body,
+            net!(self),
+            args,
+            destination,
+            start_place,
+            &fn_name,
+        )?;
         self.call_stack.push(petri_function);
         self.visit_body(body);
         self.call_stack.pop();
         info!("LEAVING function: {:?}", fn_name);
         Ok(())
-    }
-
-    fn net(&mut self) -> Result<&mut pnml::PetriNet> {
-        self.pnml_doc.petri_net_data(self.net_ref)
     }
 }
 
@@ -108,11 +175,17 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             }
             _ => error!("tried to translate unoptimized MIR"),
         }
+        function!(self)
+            .add_locals(net!(self), &body.local_decls)
+            .expect("cannot add locals to petri net function");
         self.super_body(body);
     }
 
     fn visit_basic_block_data(&mut self, block: BasicBlock, data: &BasicBlockData<'tcx>) {
         trace!("\n---BasicBlock {:?}---", block);
+        function!(self)
+            .activate_block(net!(self), &block)
+            .expect("unable to activate basic");
         self.super_basic_block_data(block, data)
     }
     fn visit_source_scope_data(&mut self, scope_data: &SourceScopeData) {
@@ -121,23 +194,31 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
 
     fn visit_statement(&mut self, statement: &Statement<'tcx>, location: Location) {
         trace!("{:?}: ", statement.kind);
+        function!(self)
+            .add_statement(net!(self))
+            .expect("unable to add statement");
         self.super_statement(statement, location);
     }
 
     //Begin statement visits//
     fn visit_assign(&mut self, place: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
         //trace!("{:?} = {:?}", place, rvalue);
+        panic!("assign"); // TODO: remove
         self.super_assign(place, rvalue, location);
     }
 
     fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
+        panic!("place"); // TODO: remove
         self.super_place(place, context, location);
     }
 
-    fn visit_local(&mut self, _local: &Local, _context: PlaceContext, _location: Location) {}
+    fn visit_local(&mut self, _local: &Local, _context: PlaceContext, _location: Location) {
+        trace!("local");
+    }
 
     fn visit_retag(&mut self, kind: &RetagKind, place: &Place<'tcx>, location: Location) {
         trace!("{:?}@{:?}", kind, place);
+        panic!("retag"); //TODO: remove
         self.super_retag(kind, place, location);
     }
 
@@ -148,6 +229,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         user_ty: &UserTypeProjection,
         location: Location,
     ) {
+        panic!("ascribe_user_ty"); //TODO: remove
         self.super_ascribe_user_ty(place, variance, user_ty, location);
     }
     //End statement visits
@@ -161,24 +243,28 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     fn visit_terminator_kind(&mut self, kind: &TerminatorKind<'tcx>, location: Location) {
         trace!("{:?}", kind);
         use rustc::mir::TerminatorKind::*;
-        let net = self
-            .pnml_doc
-            .petri_net_data(self.net_ref)
-            .expect("corrupted net reference");
+        let net = net!(self);
         match kind {
             Return => {
                 trace!("Return");
+                function!(self).retorn(net).expect("return failed");
             }
 
             Goto { target } => {
                 trace!("Goto");
-                let function = self.call_stack.peek_mut().expect("empty call stack");
-                function.goto(net, target).expect("Goto Block failed");
+                function!(self)
+                    .goto(net, target)
+                    .expect("Goto Block failed");
             }
 
-            SwitchInt { .. } => trace!("SwitchInt"),
+            SwitchInt { .. } => panic!("SwitchInt"),
 
-            Call { ref func, .. } => {
+            Call {
+                ref func,
+                args,
+                destination,
+                ..
+            } => {
                 // info!(
                 //     "functionCall\nfunc: {:?}\nargs: {:?}\ndest: {:?}",
                 //     func, args, destination
@@ -212,15 +298,18 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                         if !self.tcx.is_mir_available(function) {
                             warn!("Could not find mir: {:?}", function);
                         } else {
-                            panic!("translate call");
-                            //self.translate(function);
+                            let start_place = function!(self)
+                                .function_call_start_place()
+                                .expect("Unable to infer start place of function call")
+                                .clone();
+                            self.translate(function, start_place, args, destination);
                         }
                     }
                 }
             }
 
             Drop { .. } => {
-                trace! {"drop"}
+                panic! {"drop"}
             }
 
             Assert { .. } => warn!("assert"),
@@ -349,5 +438,19 @@ fn skip_function<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
         true
     } else {
         false
+    }
+}
+
+fn op_to_local<'a>(operand: &'a Operand<'a>) -> &'a Local {
+    match operand {
+        Operand::Copy(place) | Operand::Move(place) => place_to_local(place),
+        Operand::Constant(_) => panic!("cannot convert Constant to Local"),
+    }
+}
+
+fn place_to_local<'a>(place: &'a Place<'a>) -> &'a Local {
+    match &place.base {
+        PlaceBase::Local(local) => local,
+        PlaceBase::Static(_statik) => panic!("static places cannot (yet) be converted to locals"),
     }
 }
