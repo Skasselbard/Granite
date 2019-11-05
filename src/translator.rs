@@ -86,7 +86,7 @@ impl<'tcx> Translator<'tcx> {
         })
     }
 
-    pub fn petrify(&mut self, main_fn: DefId) -> Result<()> {
+    pub fn petrify(&mut self, main_fn: DefId) -> Result<(String)> {
         let start_place = {
             let net = net!(self);
             let mut place = net.add_place(&self.root_page)?;
@@ -94,62 +94,15 @@ impl<'tcx> Translator<'tcx> {
             place
         };
         //TODO: check destination
-        self.translate(main_fn, start_place, &Vec::new(), &None)?;
-        print!("{}", self.pnml_doc.to_xml()?);
-        Ok(())
+        self.translate(main_fn, start_place)?;
+        Ok(self.pnml_doc.to_xml()?)
     }
 
-    fn translate<'a>(
-        &mut self,
-        function: DefId,
-        start_place: NodeRef,
-        args: &Vec<Operand<'_>>,
-        destination: &Option<(Place<'tcx>, mir::BasicBlock)>,
-    ) -> Result<()> {
+    fn translate<'a>(&mut self, function: DefId, start_place: NodeRef) -> Result<()> {
         let fn_name = function.describe_as_module(self.tcx);
         info!("ENTERING function: {:?}", fn_name);
         let body = self.tcx.optimized_mir(function);
-        // if we come from the main we ignore the arguments
-        // else we pass the locals for the function arguments
-        let args = if args.is_empty() {
-            std::collections::HashMap::new()
-        } else {
-            let mut map = std::collections::HashMap::new();
-            for arg in args {
-                let local = op_to_local(arg);
-                map.insert(local.clone(), function!(self).get_local(local)?.clone());
-            }
-            map
-        };
-        // if we got a none we stepped into a converging function
-        // if we come from the main we create a local for a return
-        // else we get the return place from the caller
-        let destination = {
-            match destination {
-                None => None,
-                Some((place, _block)) => {
-                    let local = place_to_local(place);
-                    if self.call_stack.is_empty() {
-                        let mut place = net!(self).add_place(&self.root_page)?;
-                        Some((
-                            local.clone(),
-                            crate::petri_net::function::Local::new(net!(self), &self.root_page)?,
-                        ))
-                    } else {
-                        Some((local.clone(), function!(self).get_local(local)?.clone()))
-                    }
-                }
-            }
-        };
-        let petri_function = Function::new(
-            function,
-            body,
-            net!(self),
-            args,
-            destination,
-            start_place,
-            &fn_name,
-        )?;
+        let petri_function = Function::new(function, body, net!(self), start_place, &fn_name)?;
         self.call_stack.push(petri_function);
         self.visit_body(body);
         self.call_stack.pop();
@@ -302,7 +255,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                                 .function_call_start_place()
                                 .expect("Unable to infer start place of function call")
                                 .clone();
-                            self.translate(function, start_place, args, destination);
+                            self.translate(function, start_place);
                         }
                     }
                 }
@@ -441,16 +394,15 @@ fn skip_function<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
     }
 }
 
-fn op_to_local<'a>(operand: &'a Operand<'a>) -> &'a Local {
+fn op_to_local(operand: &Operand<'_>) -> Local {
     match operand {
         Operand::Copy(place) | Operand::Move(place) => place_to_local(place),
         Operand::Constant(_) => panic!("cannot convert Constant to Local"),
     }
 }
 
-fn place_to_local<'a>(place: &'a Place<'a>) -> &'a Local {
-    match &place.base {
-        PlaceBase::Local(local) => local,
-        PlaceBase::Static(_statik) => panic!("static places cannot (yet) be converted to locals"),
-    }
+fn place_to_local(place: &Place<'_>) -> Local {
+    place
+        .local_or_deref_local()
+        .expect("static places cannot (yet) be converted to locals")
 }

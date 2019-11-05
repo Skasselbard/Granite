@@ -32,7 +32,7 @@ impl rustc_driver::Callbacks for PetriConfig {
         compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let (entry_def_id, _) = tcx.entry_fn(LOCAL_CRATE).expect("no main function found!");
             let mut pass = Translator::new(tcx).expect("Unable to create translator");
-            pass.petrify(entry_def_id).expect("translation failed");
+            write_to_file(&pass.petrify(entry_def_id).expect("translation failed"));
         });
 
         compiler.session().abort_if_errors();
@@ -53,4 +53,19 @@ pub fn main() {
     })
     .and_then(|result| result);
     std::process::exit(result.is_err() as i32);
+}
+
+fn write_to_file(xml: &str) {
+    use std::io::Write;
+    let mut file = match std::fs::File::create("net.pnml") {
+        Ok(file) => file,
+        Err(err) => {
+            error!("Unable to create file: {}", err);
+            return;
+        }
+    };
+    match file.write_all(xml.as_bytes()) {
+        Ok(()) => {}
+        Err(err) => error!("Unable to write file: {}", err),
+    }
 }

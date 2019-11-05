@@ -38,8 +38,6 @@ pub struct Function<'mir> {
     pub mir_body: &'mir mir::Body<'mir>,
     basic_blocks: HashMap<mir::BasicBlock, BasicBlock>,
     locals: HashMap<mir::Local, Local>,
-    args: HashMap<mir::Local, Local>,
-    destination: Option<(mir::Local, Local)>,
     active_block: Option<mir::BasicBlock>,
     page: PageRef,
     start_place: NodeRef,
@@ -54,11 +52,14 @@ pub struct Local {
 }
 
 impl Local {
-    pub fn new<'net>(net: &'net mut PetriNet, page: &PageRef) -> Result<Self> {
+    pub fn new<'net>(net: &'net mut PetriNet, page: &PageRef, name: &str) -> Result<Self> {
         let mut prenatal_place = net.add_place(page)?;
         prenatal_place.initial_marking(net, 1)?;
-        let live_place = net.add_place(page)?;
-        let dead_place = net.add_place(page)?;
+        let mut live_place = net.add_place(page)?;
+        let mut dead_place = net.add_place(page)?;
+        prenatal_place.name(net, &format!("local_{}_uninitialized", name))?;
+        live_place.name(net, &format!("local_{}_live", name))?;
+        dead_place.name(net, &format!("local_{}_dead", name))?;
         Ok(Local {
             prenatal_place,
             live_place,
@@ -74,39 +75,29 @@ impl<'mir, 'a> Function<'mir> {
         mir_id: DefId,
         mir_body: &'mir mir::Body<'mir>,
         net: &'net mut PetriNet,
-        args: HashMap<mir::Local, Local>,
-        destination: Option<(mir::Local, Local)>, //TODO: also request return basicBlock?
         start_place: NodeRef,
         name: &str,
     ) -> Result<Self> {
         let page = net.add_page(Some(name));
         let end_place = net.add_place(&page)?;
-
-        Ok(Function {
+        let mut function = Function {
             mir_id,
             mir_body,
             basic_blocks: HashMap::new(),
             locals: HashMap::new(),
-            args,
-            destination,
             active_block: None,
             page,
             start_place,
             end_place,
-        })
+        };
+        function.add_locals(net, &function.mir_body.local_decls)?;
+        Ok(function)
     }
 
     pub fn get_local(&self, mir_local: &mir::Local) -> Result<&Local> {
-        // search in the args the list of locals and in the destination
-        match self.args.get(mir_local) {
+        match self.locals.get(mir_local) {
             Some(local) => Ok(&local),
-            None => match self.locals.get(mir_local) {
-                Some(local) => Ok(&local),
-                None => match &self.destination {
-                    Some((_, local)) => Ok(&local),
-                    None => panic!("local not found"),
-                },
-            },
+            None => panic!("local not found"),
         }
     }
 
@@ -191,8 +182,12 @@ impl<'mir, 'a> Function<'mir> {
         // mir_local: mir::Local => index for local decls in mir data structure
         // decl: mir::LocalDecl => data of a local in mir data structure
         // local: crate:: .. ::Local => petri net representation of a local
-        for (mir_local, _decl) in locals.iter_enumerated() {
-            let local = Local::new(net, &self.page)?;
+        for (mir_local, decl) in locals.iter_enumerated() {
+            let name = match decl.name {
+                Some(name) => format!("{}: {}", name, decl.ty),
+                None => format!("_: {}", decl.ty),
+            };
+            let local = Local::new(net, &self.page, &name)?;
             self.locals.insert(mir_local, local);
         }
         Ok(())
