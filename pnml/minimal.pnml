@@ -34,11 +34,29 @@
           <text>local__: ()_dead</text>
         </name>
       </place>
-      <place id="n0_p1_o4" />
-      <place id="n0_p1_o5" />
-      <transition id="n0_p1_o6" />
-      <arc source="n0_p1_o5" target="n0_p1_o6" id="n0_p1_o7" />
-      <arc source="n0_p1_o6" target="n0_p1_o0" id="n0_p1_o8" />
+      <place id="n0_p1_o4">
+        <name>
+          <text>local__: ()_uninitialized</text>
+        </name>
+        <initialMarking>
+          <text>1</text>
+        </initialMarking>
+      </place>
+      <place id="n0_p1_o5">
+        <name>
+          <text>local__: ()_live</text>
+        </name>
+      </place>
+      <place id="n0_p1_o6">
+        <name>
+          <text>local__: ()_dead</text>
+        </name>
+      </place>
+      <place id="n0_p1_o7" />
+      <place id="n0_p1_o8" />
+      <transition id="n0_p1_o9" />
+      <arc source="n0_p1_o8" target="n0_p1_o9" id="n0_p1_o10" />
+      <arc source="n0_p1_o9" target="n0_p1_o0" id="n0_p1_o11" />
     </page>
   </net>
 </pnml>

@@ -46,9 +46,9 @@ pub struct Function<'mir> {
 
 #[derive(Debug, Clone)]
 pub struct Local {
-    prenatal_place: NodeRef,
-    live_place: NodeRef,
-    dead_place: NodeRef,
+    pub(crate) prenatal_place: NodeRef,
+    pub(crate) live_place: NodeRef,
+    pub(crate) dead_place: NodeRef,
 }
 
 impl Local {
@@ -101,8 +101,12 @@ impl<'mir, 'a> Function<'mir> {
         }
     }
 
-    pub fn add_statement<'net>(&mut self, net: &'net mut PetriNet) -> Result<()> {
-        active_block_mut!(self).add_statement(net);
+    pub fn add_statement<'net>(
+        &mut self,
+        net: &'net mut PetriNet,
+        statement: &mir::Statement<'_>,
+    ) -> Result<()> {
+        active_block_mut!(self).add_statement(net, statement, &self.locals);
         Ok(())
     }
 

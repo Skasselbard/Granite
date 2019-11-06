@@ -41,7 +41,7 @@ impl<T> CallStack<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.is_empty()
+        self.stack.is_empty()
     }
 }
 
@@ -148,7 +148,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     fn visit_statement(&mut self, statement: &Statement<'tcx>, location: Location) {
         trace!("{:?}: ", statement.kind);
         function!(self)
-            .add_statement(net!(self))
+            .add_statement(net!(self), statement)
             .expect("unable to add statement");
         self.super_statement(statement, location);
     }
@@ -165,9 +165,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         self.super_place(place, context, location);
     }
 
-    fn visit_local(&mut self, _local: &Local, _context: PlaceContext, _location: Location) {
-        trace!("local");
-    }
+    fn visit_local(&mut self, _local: &Local, _context: PlaceContext, _location: Location) {}
 
     fn visit_retag(&mut self, kind: &RetagKind, place: &Place<'tcx>, location: Location) {
         trace!("{:?}@{:?}", kind, place);
@@ -392,17 +390,4 @@ fn skip_function<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
     } else {
         false
     }
-}
-
-fn op_to_local(operand: &Operand<'_>) -> Local {
-    match operand {
-        Operand::Copy(place) | Operand::Move(place) => place_to_local(place),
-        Operand::Constant(_) => panic!("cannot convert Constant to Local"),
-    }
-}
-
-fn place_to_local(place: &Place<'_>) -> Local {
-    place
-        .local_or_deref_local()
-        .expect("static places cannot (yet) be converted to locals")
 }
