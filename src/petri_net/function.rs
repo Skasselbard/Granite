@@ -32,12 +32,21 @@ macro_rules! active_block_mut {
     };
 }
 
+// pub(crate) type Constant = ();
+// pub(crate) type ConstantMemory<'mir> = HashMap<mir::Constant<'mir>, Constant>;
+
+#[derive(Debug)]
+pub struct VirtualMemory {
+    pub locals: HashMap<mir::Local, Local>,
+    pub constants: NodeRef, //ConstantMemory<'mir>,
+}
+
 #[derive(Debug)]
 pub struct Function<'mir> {
     pub mir_id: DefId,
     pub mir_body: &'mir mir::Body<'mir>,
     basic_blocks: HashMap<mir::BasicBlock, BasicBlock>,
-    locals: HashMap<mir::Local, Local>,
+    virt_memory: VirtualMemory,
     active_block: Option<mir::BasicBlock>,
     page: PageRef,
     start_place: NodeRef,
@@ -49,6 +58,12 @@ pub struct Local {
     pub(crate) prenatal_place: NodeRef,
     pub(crate) live_place: NodeRef,
     pub(crate) dead_place: NodeRef,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub enum LocalKey {
+    MirLocal(mir::Local),
+    Constant,
 }
 
 impl Local {
@@ -66,16 +81,15 @@ impl Local {
             dead_place,
         })
     }
-    pub fn spawn(&mut self) {}
-    pub fn eliminate(&mut self) {}
 }
 
-impl<'mir, 'a> Function<'mir> {
+impl<'mir> Function<'mir> {
     pub fn new<'net>(
         mir_id: DefId,
         mir_body: &'mir mir::Body<'mir>,
         net: &'net mut PetriNet,
         start_place: NodeRef,
+        constant_memory: &NodeRef,
         name: &str,
     ) -> Result<Self> {
         let page = net.add_page(Some(name));
@@ -84,7 +98,10 @@ impl<'mir, 'a> Function<'mir> {
             mir_id,
             mir_body,
             basic_blocks: HashMap::new(),
-            locals: HashMap::new(),
+            virt_memory: VirtualMemory {
+                locals: HashMap::new(),
+                constants: constant_memory.clone(),
+            },
             active_block: None,
             page,
             start_place,
@@ -94,19 +111,12 @@ impl<'mir, 'a> Function<'mir> {
         Ok(function)
     }
 
-    pub fn get_local(&self, mir_local: &mir::Local) -> Result<&Local> {
-        match self.locals.get(mir_local) {
-            Some(local) => Ok(&local),
-            None => panic!("local not found"),
-        }
-    }
-
     pub fn add_statement<'net>(
         &mut self,
         net: &'net mut PetriNet,
         statement: &mir::Statement<'_>,
     ) -> Result<()> {
-        active_block_mut!(self).add_statement(net, statement, &self.locals);
+        active_block_mut!(self).add_statement(net, statement, &self.virt_memory)?;
         Ok(())
     }
 
@@ -141,6 +151,24 @@ impl<'mir, 'a> Function<'mir> {
         Ok(())
     }
 
+    pub fn switch_int<'net>(
+        &mut self,
+        net: &'net mut PetriNet,
+        targets: &Vec<mir::BasicBlock>,
+    ) -> Result<()> {
+        for bb in targets {
+            if !self.basic_blocks.contains_key(bb) {
+                self.add_basic_block(net, bb)?;
+            };
+            let source_end = active_block!(self).end_place();
+            let target_start = self.basic_blocks.get(bb).unwrap().start_place();
+            let connection_transition = net.add_transition(&self.page)?;
+            net.add_arc(&self.page, &source_end, &connection_transition)?;
+            net.add_arc(&self.page, &connection_transition, &target_start)?;
+        }
+        Ok(())
+    }
+
     pub fn activate_block<'net>(
         &mut self,
         net: &'net mut PetriNet,
@@ -159,6 +187,10 @@ impl<'mir, 'a> Function<'mir> {
     pub fn function_call_start_place(&self) -> Result<&NodeRef> {
         let block = active_block!(self);
         Ok(block.end_place())
+    }
+
+    pub fn constants(&mut self) -> &NodeRef {
+        &self.virt_memory.constants
     }
 
     fn add_basic_block<'net>(
@@ -192,7 +224,7 @@ impl<'mir, 'a> Function<'mir> {
                 None => format!("_: {}", decl.ty),
             };
             let local = Local::new(net, &self.page, &name)?;
-            self.locals.insert(mir_local, local);
+            self.virt_memory.locals.insert(mir_local, local);
         }
         Ok(())
     }

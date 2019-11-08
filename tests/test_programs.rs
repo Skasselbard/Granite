@@ -9,7 +9,7 @@ fn test_program(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     cmd.env("RUST_BACKTRACE", "1");
     cmd.env("RUST_LOG", "trace");
     let result = cmd.assert().success();
-    // run 'cargo test -- --nocapture' to see the actual output
+    //run 'cargo test -- --nocapture' to see the actual output
     let output = result.get_output();
     if output.status.success() {
         println!("{}", String::from_utf8_lossy(&output.stdout));

@@ -1,3 +1,5 @@
+- landing pads: https://releases.llvm.org/7.0.0/docs/ExceptionHandling.html https://releases.llvm.org/7.0.0/docs/LangRef.html#i-landingpad
+
 # Outline
 
 ## Abstract

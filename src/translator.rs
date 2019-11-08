@@ -1,4 +1,4 @@
-use crate::petri_net::function::Function;
+use crate::petri_net::function::{Function, VirtualMemory};
 use pnml::{NodeRef, PNMLDocument, PageRef, PetriNetRef, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir::visit::Visitor;
@@ -102,7 +102,19 @@ impl<'tcx> Translator<'tcx> {
         let fn_name = function.describe_as_module(self.tcx);
         info!("ENTERING function: {:?}", fn_name);
         let body = self.tcx.optimized_mir(function);
-        let petri_function = Function::new(function, body, net!(self), start_place, &fn_name)?;
+        let const_memory = if self.call_stack.is_empty() {
+            net!(self).add_place(&self.root_page)?
+        } else {
+            function!(self).constants().clone()
+        };
+        let petri_function = Function::new(
+            function,
+            body,
+            net!(self),
+            start_place,
+            &const_memory,
+            &fn_name,
+        )?;
         self.call_stack.push(petri_function);
         self.visit_body(body);
         self.call_stack.pop();
@@ -116,14 +128,14 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         match body.phase {
             MirPhase::Optimized => {
                 trace!("source scopes: {:?}", body.source_scopes);
-                trace!(
-                    "source scopes local data: {:?}",
-                    body.source_scope_local_data
-                );
+                // trace!(
+                //     "source scopes local data: {:?}",
+                //     body.source_scope_local_data
+                // );
                 //trace!("promoted: {:?}", entry_body.promoted);
-                trace!("return type: {:?}", body.return_ty());
-                trace!("yield type: {:?}", body.yield_ty);
-                trace!("generator drop: {:?}", body.generator_drop);
+                //trace!("return type: {:?}", body.return_ty());
+                //trace!("yield type: {:?}", body.yield_ty);
+                //trace!("generator drop: {:?}", body.generator_drop);
                 //trace!("local declarations: {:?}", body.local_decls());
             }
             _ => error!("tried to translate unoptimized MIR"),
@@ -141,6 +153,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             .expect("unable to activate basic");
         self.super_basic_block_data(block, data)
     }
+
     fn visit_source_scope_data(&mut self, scope_data: &SourceScopeData) {
         self.super_source_scope_data(scope_data);
     }
@@ -152,38 +165,6 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             .expect("unable to add statement");
         self.super_statement(statement, location);
     }
-
-    //Begin statement visits//
-    fn visit_assign(&mut self, place: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
-        //trace!("{:?} = {:?}", place, rvalue);
-        panic!("assign"); // TODO: remove
-        self.super_assign(place, rvalue, location);
-    }
-
-    fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
-        panic!("place"); // TODO: remove
-        self.super_place(place, context, location);
-    }
-
-    fn visit_local(&mut self, _local: &Local, _context: PlaceContext, _location: Location) {}
-
-    fn visit_retag(&mut self, kind: &RetagKind, place: &Place<'tcx>, location: Location) {
-        trace!("{:?}@{:?}", kind, place);
-        panic!("retag"); //TODO: remove
-        self.super_retag(kind, place, location);
-    }
-
-    fn visit_ascribe_user_ty(
-        &mut self,
-        place: &Place<'tcx>,
-        variance: &ty::Variance,
-        user_ty: &UserTypeProjection,
-        location: Location,
-    ) {
-        panic!("ascribe_user_ty"); //TODO: remove
-        self.super_ascribe_user_ty(place, variance, user_ty, location);
-    }
-    //End statement visits
 
     fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, location: Location) {
         //trace!("{:?}", terminator);
@@ -208,12 +189,19 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                     .expect("Goto Block failed");
             }
 
-            SwitchInt { .. } => panic!("SwitchInt"),
+            SwitchInt {
+                discr,
+                switch_ty,
+                values,
+                targets,
+            } => function!(self)
+                .switch_int(net!(self), targets)
+                .expect("switch int failed"),
 
             Call {
                 ref func,
-                args,
-                destination,
+                //args,
+                //destination,
                 ..
             } => {
                 // info!(
@@ -253,7 +241,8 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                                 .function_call_start_place()
                                 .expect("Unable to infer start place of function call")
                                 .clone();
-                            self.translate(function, start_place);
+                            self.translate(function, start_place)
+                                .expect("translation error");
                         }
                     }
                 }
@@ -263,13 +252,18 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 panic! {"drop"}
             }
 
-            Assert { .. } => warn!("assert"),
+            Assert { .. } => panic!("assert"),
 
-            Yield { .. } => warn!("Yield"),
-            GeneratorDrop => warn!("GeneratorDrop"),
+            Yield { .. } => panic!("Yield"),
+            GeneratorDrop => panic!("GeneratorDrop"),
             DropAndReplace { .. } => warn!("DropAndReplace"),
-            Resume => warn!("Resume"),
-            Abort => warn!("Abort"),
+            Resume =>
+            // calling bb finden
+            // mit unwind pfad connecten
+            {
+                panic!("Resume")
+            }
+            Abort => panic!("Abort"),
             FalseEdges { .. } => bug!(
                 "should have been eliminated by\
                  `simplify_branches` mir pass"
@@ -286,30 +280,6 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     fn visit_assert_message(&mut self, msg: &AssertMessage<'tcx>, location: Location) {
         self.super_assert_message(msg, location);
     }
-
-    fn visit_rvalue(&mut self, rvalue: &Rvalue<'tcx>, location: Location) {
-        self.super_rvalue(rvalue, location);
-    }
-
-    fn visit_operand(&mut self, operand: &Operand<'tcx>, location: Location) {
-        self.super_operand(operand, location);
-    }
-
-    fn visit_place_base(
-        &mut self,
-        place_base: &PlaceBase<'tcx>,
-        context: PlaceContext,
-        location: Location,
-    ) {
-        self.super_place_base(place_base, context, location);
-    }
-
-    // fn visit_projection(&mut self,
-    //                     place: &Projection<'tcx>,
-    //                     context: PlaceContext,
-    //                     location: Location) {
-    //     self.super_projection(place, context, location);
-    // }
 
     fn visit_constant(&mut self, constant: &Constant<'tcx>, location: Location) {
         trace!("Constant: {:?}", constant);
