@@ -128,10 +128,6 @@ impl VirtualMemory {
             _ => panic!("Non constant stored in constant space"),
         }
     }
-
-    // fn add_static(&mut self, statik: &DefId) -> &NodeRef {
-    //     self.statics.push()
-    // }
 }
 
 impl<'mir> Function<'mir> {
@@ -247,12 +243,16 @@ impl<'mir> Function<'mir> {
         target: &mir::BasicBlock,
         unwind: &Option<mir::BasicBlock>,
     ) -> Result<()> {
+        let page = self.page.clone();
+        let target_start = match self.basic_blocks.get(target) {
+            Some(block) => block.start_place().clone(),
+            None => self.add_basic_block(net, target)?.start_place().clone(),
+        };
         let source = active_block!(self).end_place();
-        let target_start = self.basic_blocks.get(target).unwrap().start_place();
-        let mut t = net.add_transition(&self.page)?;
+        let mut t = net.add_transition(&page)?;
         t.name(net, "drop")?;
-        net.add_arc(&self.page, source, &t)?;
-        net.add_arc(&self.page, &t, target_start)?;
+        net.add_arc(&page, source, &t)?;
+        net.add_arc(&page, &t, &target_start)?;
 
         if let Some(unwind) = unwind {
             let unwind_start = self.basic_blocks.get(unwind).unwrap().start_place();
