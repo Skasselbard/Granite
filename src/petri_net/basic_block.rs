@@ -123,8 +123,12 @@ impl Statement {
                 net.add_arc(page, &local.live_place, &self.stmt_transition)?;
                 net.add_arc(page, &self.stmt_transition, &local.dead_place)?;
             }
+            StatementKind::SetDiscriminant { place, .. } => {
+                let place_node = place_to_data_node(place, virt_memory);
+                net.add_arc(page, place_node, &self.stmt_transition)?;
+                net.add_arc(page, &self.stmt_transition, place_node)?;
+            }
             StatementKind::FakeRead(_, _)
-            | StatementKind::SetDiscriminant { .. }
             | StatementKind::InlineAsm(_)
             | StatementKind::Retag(_, _)
             | StatementKind::AscribeUserType(box (_, _), _) => {
