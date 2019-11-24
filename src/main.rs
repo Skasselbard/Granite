@@ -1,14 +1,15 @@
 #![feature(rustc_private)]
 #![deny(rust_2018_idioms)]
 #![feature(option_expect_none)]
+#![feature(box_patterns)]
 
 #[macro_use]
 extern crate log;
 
 #[macro_use]
 extern crate rustc;
-extern crate rustc_data_structures;
 extern crate rustc_driver;
+extern crate rustc_index;
 extern crate rustc_interface;
 
 mod init;
@@ -48,7 +49,7 @@ pub fn main() {
     let mut config = PetriConfig {
         _arguments: fairum_args,
     };
-    let result = rustc_driver::report_ices_to_stderr_if_any(move || {
+    let result = rustc_driver::catch_fatal_errors(move || {
         rustc_driver::run_compiler(&rustc_args, &mut config, None, None)
     })
     .and_then(|result| result);

@@ -1,41 +1,10 @@
-use crate::petri_net::function::{Local, LocalKey, VirtualMemory};
+use crate::petri_net::function::{Data, Local, LocalKey, VirtualMemory};
 use pnml;
 use pnml::{NodeRef, PageRef, PetriNet, Result};
 use rustc::mir;
 use std::clone::Clone;
 use std::collections::HashMap;
 
-//    .-----.
-// .-( start )------------------------------------------.
-// |  '-----'            BasicBlock                     |
-// |     |                                              |
-// |     v                .-----------------------.     |
-// |   .---.            .-----.  Statements       |     |
-// |   |   |---------->( start )                  |     |
-// |   '---'            '-----'                   |     |
-// |     |                |                       |     |
-// |     v                |                       |     |
-// | .-------.            |                       |     |
-// |( working )           |                       |     |
-// | '-------'            |                       |     |
-// |     |                |                       |     |
-// |     v                |                       |     |
-// |   .---.             .---.                    |     |
-// |   |   |<-----------( end )                   |     |
-// |   '---'             '---'                    |     |
-// |     |                '-----------------------'     |
-// |     v                                              |
-// | .------.                                           |
-// |( choice )----------------------------------.       |
-// | '------'        |       |       |          |       |
-// |     -.          |       |       |          |       |
-// |.-----|----------|-------|-------|----------|-----. |
-// ||     |          |  Terminator   |          |     | |
-// ||     |          |       |       |          |     | |
-// ||     v          v       v       v          v     | |
-// ||  .-----.      .-.     .-.     .-.      .-----.  | |
-// ''-( end_1 )----(   )---(   )---(   )----( end_N )-'-'
-//     '-----'      '-'     '-'     '-'      '-----'
 #[derive(Debug)]
 pub struct BasicBlock {
     page: pnml::PageRef,
@@ -60,9 +29,7 @@ impl BasicBlock {
         let page = page.clone();
         let start_place = start_place.clone();
         let end_place = net.add_place(&page)?;
-        // TODO: add flow
         let statements = Vec::new();
-        //TODO: add statements
         Ok(BasicBlock {
             page,
             start_place,
@@ -143,16 +110,16 @@ impl Statement {
     ) -> Result<()> {
         use mir::StatementKind;
         match &statement.kind {
-            StatementKind::Assign(lvalue, rvalue) => {
-                self.build_assign(net, page, virt_memory, lvalue, rvalue.as_ref())?
+            StatementKind::Assign(box (lvalue, rvalue)) => {
+                self.build_assign(net, page, virt_memory, lvalue, rvalue)?
             }
             StatementKind::StorageLive(local) => {
-                let local = virt_memory.locals.get(&local).expect("local not found");
+                let local = virt_memory.get_local(&local).expect("local not found");
                 net.add_arc(page, &local.prenatal_place, &self.stmt_transition)?;
                 net.add_arc(page, &self.stmt_transition, &local.live_place)?;
             }
             StatementKind::StorageDead(local) => {
-                let local = virt_memory.locals.get(&local).expect("local not found");
+                let local = virt_memory.get_local(&local).expect("local not found");
                 net.add_arc(page, &local.live_place, &self.stmt_transition)?;
                 net.add_arc(page, &self.stmt_transition, &local.dead_place)?;
             }
@@ -160,7 +127,9 @@ impl Statement {
             | StatementKind::SetDiscriminant { .. }
             | StatementKind::InlineAsm(_)
             | StatementKind::Retag(_, _)
-            | StatementKind::AscribeUserType(_, _, _) => panic!("statementKind not supported"),
+            | StatementKind::AscribeUserType(box (_, _), _) => {
+                panic!("statementKind not supported: {:?}", statement.kind)
+            }
             StatementKind::Nop => {}
         }
         Ok(())
@@ -175,88 +144,93 @@ impl Statement {
         rvalue: &mir::Rvalue<'_>,
     ) -> Result<()> {
         use mir::Rvalue;
-        const nolocal: &str = "Unable to get local";
-        let llocal = virt_memory
-            .locals
-            .get(&place_to_local(lvalue))
-            .expect(nolocal);
+        let llocal = place_to_data_node(lvalue, virt_memory);
+        add_node_to_statement(net, page, llocal, &self.stmt_transition, virt_memory)?;
         match rvalue {
             Rvalue::Use(ref operand)
             | Rvalue::Repeat(ref operand, _)
             | Rvalue::UnaryOp(_, ref operand) => {
-                let op_place = match op_to_local(operand) {
-                    LocalKey::MirLocal(local) => {
-                        &virt_memory.locals.get(&local).expect(nolocal).live_place
-                    }
-                    LocalKey::Constant => &virt_memory.constants,
-                };
-                net.add_arc(page, &op_place, &self.stmt_transition)?;
-                net.add_arc(page, &self.stmt_transition, &op_place)?;
-                net.add_arc(page, &self.stmt_transition, &llocal.live_place)?;
+                let op_place = op_to_data_node(operand, virt_memory);
+                add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
             }
             Rvalue::Ref(_, _, ref place) | Rvalue::Len(ref place) => {
-                let place_local = virt_memory
-                    .locals
-                    .get(&place_to_local(place))
-                    .expect(nolocal);
-                net.add_arc(page, &place_local.live_place, &self.stmt_transition)?;
-                net.add_arc(page, &self.stmt_transition, &place_local.live_place)?;
-                net.add_arc(page, &self.stmt_transition, &llocal.live_place)?;
+                let place_local = place_to_data_node(place, virt_memory);
+                add_node_to_statement(net, page, place_local, &self.stmt_transition, virt_memory)?;
             }
             Rvalue::Cast(ref _kind, ref _operand, ref _typ) => {}
             Rvalue::BinaryOp(ref _operator, ref loperand, ref roperand)
             | Rvalue::CheckedBinaryOp(ref _operator, ref loperand, ref roperand) => {
-                let lop_place = match op_to_local(loperand) {
-                    LocalKey::MirLocal(local) => {
-                        &virt_memory.locals.get(&local).expect(nolocal).live_place
-                    }
-                    LocalKey::Constant => &virt_memory.constants,
-                };
-                let rop_place = match op_to_local(roperand) {
-                    LocalKey::MirLocal(local) => {
-                        &virt_memory.locals.get(&local).expect(nolocal).live_place
-                    }
-                    LocalKey::Constant => &virt_memory.constants,
-                };
-                net.add_arc(page, &lop_place, &self.stmt_transition)?;
-                net.add_arc(page, &self.stmt_transition, &lop_place)?;
-                net.add_arc(page, &rop_place, &self.stmt_transition)?;
-                net.add_arc(page, &self.stmt_transition, &rop_place)?;
-                net.add_arc(page, &self.stmt_transition, &llocal.live_place)?;
+                let lop_place = op_to_data_node(loperand, virt_memory);
+                let rop_place = op_to_data_node(roperand, virt_memory);
+                add_node_to_statement(net, page, lop_place, &self.stmt_transition, virt_memory)?;
+                add_node_to_statement(net, page, rop_place, &self.stmt_transition, virt_memory)?;
             }
             Rvalue::NullaryOp(ref operator, ref _typ) => match operator {
                 // these are essentially a lookup of the type size in the static space
                 mir::NullOp::SizeOf | mir::NullOp::Box => {
-                    net.add_arc(page, &virt_memory.constants, &self.stmt_transition)?;
-                    net.add_arc(page, &self.stmt_transition, &virt_memory.constants)?;
+                    net.add_arc(page, &virt_memory.get_constant(), &self.stmt_transition)?;
+                    net.add_arc(page, &self.stmt_transition, &virt_memory.get_constant())?;
                 }
             },
             Rvalue::Discriminant(ref _place) => panic!("discriminant"),
-            Rvalue::Aggregate(ref kind, ref operands) => panic!("aggregate"),
+            Rvalue::Aggregate(ref _kind, ref operands) => {
+                //FIXME: does the kind matter?
+                for operand in operands {
+                    let op_place = op_to_data_node(operand, virt_memory);
+                    add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
+                }
+            }
         }
         Ok(())
     }
 }
 
-fn op_to_local(operand: &mir::Operand<'_>) -> LocalKey {
+fn add_node_to_statement(
+    net: &mut PetriNet,
+    page: &PageRef,
+    place_node: &NodeRef,
+    statement_transition: &NodeRef,
+    memory: &VirtualMemory,
+) -> Result<()> {
+    net.add_arc(page, &place_node, statement_transition)?;
+    net.add_arc(page, statement_transition, &place_node)?;
+    Ok(())
+}
+
+fn op_to_data_node<'a>(operand: &mir::Operand<'_>, memory: &'a VirtualMemory) -> &'a NodeRef {
     match operand {
-        mir::Operand::Copy(place) | mir::Operand::Move(place) => {
-            LocalKey::MirLocal(place_to_local(place))
-        }
+        mir::Operand::Copy(place) | mir::Operand::Move(place) => place_to_data_node(place, memory),
         // Constants are always valid reads
         // until using a high level petri net the value is not important and can be ignored
-        // The static space can be seen as one petri net place that is accessed
-        mir::Operand::Constant(_) => LocalKey::Constant,
+        // Constants can be seen as one petri net place that is accessed
+        mir::Operand::Constant(_) => memory.get_constant(),
     }
 }
 
-fn place_to_local(place: &mir::Place<'_>) -> mir::Local {
-    place
-        .local_or_deref_local()
+fn place_to_data_node<'a>(place: &mir::Place<'_>, memory: &'a VirtualMemory) -> &'a NodeRef {
+    let local = place.local_or_deref_local();
+    match local {
+        Some(local) => {
+            &memory
+                .get_local(&local)
+                .expect("local not found")
+                .live_place
+        }
         //FIXME: is it valid to just use the outermost local if nothing better was found?
-        .or_else(|| match &place.base {
-            mir::PlaceBase::Local(local) => Some(local.clone()),
-            mir::PlaceBase::Static(_statik) => panic!("cannot convert static to local"),
-        })
-        .expect("cannot convert place to local")
+        // maybe this functions helps?
+        // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.intern_place_elems
+        // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.mk_place_elems
+        None => match &place.base {
+            mir::PlaceBase::Local(local) => {
+                &memory.get_local(local).expect("local not found").live_place
+            }
+            // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.promoted_mir
+            mir::PlaceBase::Static(statik) => match statik.kind {
+                mir::StaticKind::Static => panic!("staticKind::Static -> cannot convert"),
+                mir::StaticKind::Promoted(promoted, _) => &memory
+                    .get_static(&promoted)
+                    .expect("promoted statik not found"),
+            },
+        },
+    }
 }

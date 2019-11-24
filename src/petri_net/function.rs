@@ -3,7 +3,7 @@ use pnml;
 use pnml::{NodeRef, PageRef, PetriNet, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir;
-use rustc_data_structures::indexed_vec::IndexVec;
+use rustc_index::vec::IndexVec;
 use std::collections::HashMap;
 
 macro_rules! active_block {
@@ -32,13 +32,19 @@ macro_rules! active_block_mut {
     };
 }
 
-// pub(crate) type Constant = ();
-// pub(crate) type ConstantMemory<'mir> = HashMap<mir::Constant<'mir>, Constant>;
-
+//TODO: Statics and constants are handled inefficiently. They are just copied by every
+// push of a new stack frame. But they can be just referenced from a root owner (the
+// ownership should be clear on a stack). Maybe it is also possible to handle them per
+// function (or per module) as their scope is limited.
 #[derive(Debug)]
 pub struct VirtualMemory {
-    pub locals: HashMap<mir::Local, Local>,
-    pub constants: NodeRef, //ConstantMemory<'mir>,
+    locals: HashMap<mir::Local, Data>,
+    //FIXME: this is an oversimplification of statics
+    // the DefId can be of an entire function and
+    // inlining may split the same static into different DefIds
+    statics: HashMap<mir::Promoted, Data>,
+    // constants currently don't need special data and can be represented all with the same node
+    constants: Data,
 }
 
 #[derive(Debug)]
@@ -47,10 +53,17 @@ pub struct Function<'mir> {
     pub mir_body: &'mir mir::Body<'mir>,
     basic_blocks: HashMap<mir::BasicBlock, BasicBlock>,
     virt_memory: VirtualMemory,
-    active_block: Option<mir::BasicBlock>,
+    pub active_block: Option<mir::BasicBlock>,
     page: PageRef,
     start_place: NodeRef,
     end_place: NodeRef,
+}
+
+#[derive(Debug, Clone)]
+pub enum Data {
+    Local(Local),
+    Static(NodeRef),
+    Constant(NodeRef),
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +76,7 @@ pub struct Local {
 #[derive(Debug, Clone, Hash)]
 pub enum LocalKey {
     MirLocal(mir::Local),
+    MirStatic(mir::Promoted),
     Constant,
 }
 
@@ -83,13 +97,51 @@ impl Local {
     }
 }
 
+impl VirtualMemory {
+    pub fn get(&self, key: &LocalKey) -> Option<&Data> {
+        match key {
+            LocalKey::MirLocal(local) => self.locals.get(local),
+            LocalKey::MirStatic(statik) => self.statics.get(statik),
+            LocalKey::Constant => Some(&self.constants),
+        }
+    }
+
+    pub fn get_local(&self, local: &mir::Local) -> Option<&Local> {
+        match self.locals.get(local) {
+            Some(Data::Local(local)) => Some(local),
+            None => None,
+            Some(_) => panic!("Non local stored in locals space"),
+        }
+    }
+
+    pub fn get_static(&self, statik: &mir::Promoted) -> Option<&NodeRef> {
+        match self.statics.get(statik) {
+            Some(Data::Static(statik)) => Some(statik),
+            None => None,
+            Some(_) => panic!("Non static stored in statics space"),
+        }
+    }
+
+    pub fn get_constant(&self) -> &NodeRef {
+        match &self.constants {
+            Data::Constant(constant) => constant,
+            _ => panic!("Non constant stored in constant space"),
+        }
+    }
+
+    // fn add_static(&mut self, statik: &DefId) -> &NodeRef {
+    //     self.statics.push()
+    // }
+}
+
 impl<'mir> Function<'mir> {
     pub fn new<'net>(
         mir_id: DefId,
         mir_body: &'mir mir::Body<'mir>,
         net: &'net mut PetriNet,
         start_place: NodeRef,
-        constant_memory: &NodeRef,
+        constant_memory: &Data,
+        static_memory: &HashMap<mir::Promoted, Data>,
         name: &str,
     ) -> Result<Self> {
         let page = net.add_page(Some(name));
@@ -98,9 +150,11 @@ impl<'mir> Function<'mir> {
             mir_id,
             mir_body,
             basic_blocks: HashMap::new(),
+            //FIXME: unnessecary cloning of statics and constants
             virt_memory: VirtualMemory {
                 locals: HashMap::new(),
                 constants: constant_memory.clone(),
+                statics: static_memory.clone(),
             },
             active_block: None,
             page,
@@ -162,10 +216,51 @@ impl<'mir> Function<'mir> {
             };
             let source_end = active_block!(self).end_place();
             let target_start = self.basic_blocks.get(bb).unwrap().start_place();
-            let connection_transition = net.add_transition(&self.page)?;
+            let mut connection_transition = net.add_transition(&self.page)?;
+            connection_transition.name(net, &format!("switch int{}", bb.index()))?;
             net.add_arc(&self.page, &source_end, &connection_transition)?;
             net.add_arc(&self.page, &connection_transition, &target_start)?;
         }
+        Ok(())
+    }
+
+    pub fn resume<'net>(
+        &mut self,
+        net: &'net mut PetriNet,
+        unwind_place: &NodeRef,
+        program_end_place: &NodeRef,
+    ) -> Result<()> {
+        // TODO: make the unwind and resume semantic clear
+
+        let source_place = active_block!(self).end_place();
+        let mut t = net.add_transition(&self.page)?;
+        t.name(net, "unwind")?;
+        net.add_arc(&self.page, source_place, &t)?;
+        net.add_arc(&self.page, &t, unwind_place)?;
+        net.add_arc(&self.page, &t, program_end_place)?;
+        Ok(())
+    }
+
+    pub fn drop<'net>(
+        &mut self,
+        net: &'net mut PetriNet,
+        target: &mir::BasicBlock,
+        unwind: &Option<mir::BasicBlock>,
+    ) -> Result<()> {
+        let source = active_block!(self).end_place();
+        let target_start = self.basic_blocks.get(target).unwrap().start_place();
+        let mut t = net.add_transition(&self.page)?;
+        t.name(net, "drop")?;
+        net.add_arc(&self.page, source, &t)?;
+        net.add_arc(&self.page, &t, target_start)?;
+
+        if let Some(unwind) = unwind {
+            let unwind_start = self.basic_blocks.get(unwind).unwrap().start_place();
+            let mut t_unwind = net.add_transition(&self.page)?;
+            t.name(net, "drop_unwind")?;
+            net.add_arc(&self.page, source, &t_unwind)?;
+            net.add_arc(&self.page, &t_unwind, unwind_start)?;
+        };
         Ok(())
     }
 
@@ -189,8 +284,12 @@ impl<'mir> Function<'mir> {
         Ok(block.end_place())
     }
 
-    pub fn constants(&mut self) -> &NodeRef {
+    pub fn constants(&self) -> &Data {
         &self.virt_memory.constants
+    }
+
+    pub fn statics(&self) -> &HashMap<mir::Promoted, Data> {
+        &self.virt_memory.statics
     }
 
     fn add_basic_block<'net>(
@@ -224,7 +323,9 @@ impl<'mir> Function<'mir> {
                 None => format!("_: {}", decl.ty),
             };
             let local = Local::new(net, &self.page, &name)?;
-            self.virt_memory.locals.insert(mir_local, local);
+            self.virt_memory
+                .locals
+                .insert(mir_local, Data::Local(local));
         }
         Ok(())
     }

@@ -1,4 +1,6 @@
 - landing pads: https://releases.llvm.org/7.0.0/docs/ExceptionHandling.html https://releases.llvm.org/7.0.0/docs/LangRef.html#i-landingpad
+- unwinding: https://doc.rust-lang.org/nomicon/unwinding.html
+- promoted: constants extracted from a function and lifted to static scope - https://rust-lang.github.io/rustc-guide/appendix/glossary.html?highlight=static#appendix-c-glossary
 
 # Outline
 

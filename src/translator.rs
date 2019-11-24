@@ -1,10 +1,10 @@
-use crate::petri_net::function::{Function, VirtualMemory};
+use crate::petri_net::function::{Data, Function};
 use pnml::{NodeRef, PNMLDocument, PageRef, PetriNetRef, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir::visit::Visitor;
 use rustc::mir::visit::*;
 use rustc::mir::{self, *};
-use rustc::ty::{self, ClosureSubsts, GeneratorSubsts, Ty, TyCtxt};
+use rustc::ty::{self, Ty, TyCtxt};
 
 struct CallStack<T> {
     stack: Vec<T>,
@@ -47,10 +47,12 @@ impl<T> CallStack<T> {
 
 pub struct Translator<'tcx> {
     tcx: TyCtxt<'tcx>,
-    call_stack: CallStack<(Function<'tcx>)>,
+    call_stack: CallStack<Function<'tcx>>,
     pnml_doc: PNMLDocument,
     net_ref: PetriNetRef,
     root_page: PageRef,
+    unwind_abort_place: NodeRef,
+    program_end_place: Option<NodeRef>,
 }
 
 macro_rules! net {
@@ -73,52 +75,79 @@ impl<'tcx> Translator<'tcx> {
         let mut pnml_doc = PNMLDocument::new();
         //TODO: find a descriptive name e.g. name of the program
         let net_ref = pnml_doc.add_petri_net(None);
-        let root_page = pnml_doc
+        let net = pnml_doc
             .petri_net_data(net_ref)
-            .expect("corrupted net reference")
-            .add_page(Some("entry"));
+            .expect("corrupted net reference");
+        let root_page = net.add_page(Some("entry"));
+        let mut unwind_abort_place = net.add_place(&root_page)?;
+        unwind_abort_place.name(net, "unwind_abort")?;
         Ok(Translator {
             tcx,
             call_stack: CallStack::new(),
             pnml_doc,
             net_ref,
             root_page,
+            unwind_abort_place,
+            program_end_place: None,
         })
     }
 
-    pub fn petrify(&mut self, main_fn: DefId) -> Result<(String)> {
+    pub fn petrify(&mut self, main_fn: DefId) -> Result<String> {
         let start_place = {
             let net = net!(self);
             let mut place = net.add_place(&self.root_page)?;
+            place.name(net, "program_start")?;
             place.initial_marking(net, 1)?;
             place
         };
-        //TODO: check destination
+        self.program_end_place = {
+            let net = net!(self);
+            let mut place = net.add_place(&self.root_page)?;
+            place.name(net, "program_end")?;
+            place.initial_marking(net, 1)?;
+            Some(place)
+        };
         self.translate(main_fn, start_place)?;
         Ok(self.pnml_doc.to_xml()?)
     }
 
     fn translate<'a>(&mut self, function: DefId, start_place: NodeRef) -> Result<()> {
         let fn_name = function.describe_as_module(self.tcx);
-        info!("ENTERING function: {:?}", fn_name);
+        info!("\n\nENTERING function: {:?}", fn_name);
         let body = self.tcx.optimized_mir(function);
-        let const_memory = if self.call_stack.is_empty() {
-            net!(self).add_place(&self.root_page)?
+        let (const_memory, mut static_memory) = if self.call_stack.is_empty() {
+            (
+                Data::Constant(net!(self).add_place(&self.root_page)?),
+                std::collections::HashMap::new(),
+            )
         } else {
-            function!(self).constants().clone()
+            (
+                function!(self).constants().clone(),
+                function!(self).statics().clone(),
+            )
         };
+        // add missing promoted statics
+        for (promoted, _) in self.tcx.promoted_mir(function).iter_enumerated() {
+            if static_memory.get(&promoted).is_none() {
+                let promoted_node = net!(self).add_place(&self.root_page)?;
+                static_memory.insert(promoted, Data::Static(promoted_node));
+            } else {
+                warn!("duplicate of promoted static");
+            }
+        }
         let petri_function = Function::new(
             function,
             body,
             net!(self),
             start_place,
             &const_memory,
+            &static_memory,
             &fn_name,
         )?;
         self.call_stack.push(petri_function);
         self.visit_body(body);
         self.call_stack.pop();
-        info!("LEAVING function: {:?}", fn_name);
+        info!("\nLEAVING function: {:?}\n", fn_name);
         Ok(())
     }
 }
@@ -127,7 +156,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     fn visit_body(&mut self, body: &Body<'tcx>) {
         match body.phase {
             MirPhase::Optimized => {
-                trace!("source scopes: {:?}", body.source_scopes);
+                // trace!("source scopes: {:?}", body.source_scopes);
                 // trace!(
                 //     "source scopes local data: {:?}",
                 //     body.source_scope_local_data
@@ -147,7 +176,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     }
 
     fn visit_basic_block_data(&mut self, block: BasicBlock, data: &BasicBlockData<'tcx>) {
-        trace!("\n---BasicBlock {:?}---", block);
+        trace!("---BasicBlock {:?}---", block);
         function!(self)
             .activate_block(net!(self), &block)
             .expect("unable to activate basic");
@@ -171,6 +200,19 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         //warn!("Successors: {:?}", terminator.successors());
         self.super_terminator(terminator, location);
     }
+    // fn visit_place_base(
+    //     &mut self,
+    //     base: &PlaceBase<'tcx>,
+    //     context: PlaceContext,
+    //     location: Location,
+    // ) {
+    //     warn!("placeBase: {:?}", base);
+    //     self.super_place_base(base, context, location);
+    // }
+    // fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
+    //     warn!("place: {:?}", place);
+    //     self.super_place(place, context, location);
+    // }
 
     fn visit_terminator_kind(&mut self, kind: &TerminatorKind<'tcx>, location: Location) {
         trace!("{:?}", kind);
@@ -178,12 +220,12 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         let net = net!(self);
         match kind {
             Return => {
-                trace!("Return");
+                // trace!("Return");
                 function!(self).retorn(net).expect("return failed");
             }
 
             Goto { target } => {
-                trace!("Goto");
+                // trace!("Goto");
                 function!(self)
                     .goto(net, target)
                     .expect("Goto Block failed");
@@ -195,7 +237,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 values,
                 targets,
             } => function!(self)
-                .switch_int(net!(self), targets)
+                .switch_int(net, targets)
                 .expect("switch int failed"),
 
             Call {
@@ -216,10 +258,10 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                             let place_ty: &mir::tcx::PlaceTy<'tcx> = &place.base.ty(decls);
                             place_ty.ty
                         }
-                        Operand::Constant(ref constant) => &constant.ty,
+                        Operand::Constant(ref constant) => &constant.literal.ty,
                     }
                 };
-                let function = match sty.sty {
+                let function = match sty.kind {
                     ty::FnPtr(_) => {
                         error!("Function pointers are not supported");
                         panic!("")
@@ -231,11 +273,11 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                     }
                 };
                 if self.tcx.is_foreign_item(function) {
-                    warn!("found foreign item: {:?}", function);
+                    error!("found foreign item: {:?}", function);
                 } else {
                     if !skip_function(self.tcx, function) {
                         if !self.tcx.is_mir_available(function) {
-                            warn!("Could not find mir: {:?}", function);
+                            error!("Could not find mir: {:?}", function);
                         } else {
                             let start_place = function!(self)
                                 .function_call_start_place()
@@ -248,20 +290,29 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 }
             }
 
-            Drop { .. } => {
-                panic! {"drop"}
-            }
+            Drop {
+                location,
+                target,
+                unwind,
+            } => function!(self)
+                .drop(net, target, unwind)
+                .expect("drop failed"),
 
             Assert { .. } => panic!("assert"),
 
             Yield { .. } => panic!("Yield"),
             GeneratorDrop => panic!("GeneratorDrop"),
             DropAndReplace { .. } => warn!("DropAndReplace"),
-            Resume =>
-            // calling bb finden
-            // mit unwind pfad connecten
-            {
-                panic!("Resume")
+            Resume => {
+                function!(self)
+                    .resume(
+                        net,
+                        &self.unwind_abort_place,
+                        self.program_end_place
+                            .as_ref()
+                            .expect("missing program end place"),
+                    )
+                    .expect("resume failed");
             }
             Abort => panic!("Abort"),
             FalseEdges { .. } => bug!(
@@ -282,7 +333,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     }
 
     fn visit_constant(&mut self, constant: &Constant<'tcx>, location: Location) {
-        trace!("Constant: {:?}", constant);
+        // trace!("Constant: {:?}", constant);
         self.super_constant(constant, location);
     }
 
@@ -316,7 +367,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     }
 
     fn visit_const(&mut self, constant: &&'tcx ty::Const<'tcx>, _: Location) {
-        trace!("Const: {:?}", constant);
+        // trace!("Const: {:?}", constant);
         self.super_const(constant);
     }
 
@@ -325,14 +376,6 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     //                 _: Location) {
     //     self.super_substs(substs);
     // }
-
-    fn visit_closure_substs(&mut self, substs: &ClosureSubsts<'tcx>, _: Location) {
-        self.super_closure_substs(substs);
-    }
-
-    fn visit_generator_substs(&mut self, substs: &GeneratorSubsts<'tcx>, _: Location) {
-        self.super_generator_substs(substs);
-    }
 
     fn visit_local_decl(&mut self, local: Local, local_decl: &LocalDecl<'tcx>) {
         self.super_local_decl(local, local_decl);
