@@ -161,7 +161,10 @@ impl Statement {
                 let place_local = place_to_data_node(place, virt_memory);
                 add_node_to_statement(net, page, place_local, &self.stmt_transition, virt_memory)?;
             }
-            Rvalue::Cast(ref _kind, ref _operand, ref _typ) => {}
+            Rvalue::Cast(ref _kind, ref operand, ref _typ) => {
+                let op_place = op_to_data_node(operand, virt_memory);
+                add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
+            }
             Rvalue::BinaryOp(ref _operator, ref loperand, ref roperand)
             | Rvalue::CheckedBinaryOp(ref _operator, ref loperand, ref roperand) => {
                 let lop_place = op_to_data_node(loperand, virt_memory);
@@ -176,7 +179,10 @@ impl Statement {
                     net.add_arc(page, &self.stmt_transition, &virt_memory.get_constant())?;
                 }
             },
-            Rvalue::Discriminant(ref _place) => panic!("discriminant"),
+            Rvalue::Discriminant(ref place) => {
+                let op_place = place_to_data_node(place, virt_memory);
+                add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
+            }
             Rvalue::Aggregate(ref _kind, ref operands) => {
                 //FIXME: does the kind matter?
                 for operand in operands {
