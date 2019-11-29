@@ -13,6 +13,7 @@ extern crate rustc_index;
 extern crate rustc_interface;
 
 mod init;
+mod intrinsics;
 mod petri_net;
 mod translator;
 

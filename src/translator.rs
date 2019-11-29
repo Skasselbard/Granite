@@ -242,8 +242,9 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
 
             Call {
                 ref func,
-                //args,
-                //destination,
+                ref args,
+                ref destination,
+                ref cleanup,
                 ..
             } => {
                 // info!(
@@ -272,21 +273,28 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                         panic!("")
                     }
                 };
-                if self.tcx.is_foreign_item(function) {
-                    error!("found foreign item: {:?}", function);
-                } else {
-                    if !skip_function(self.tcx, function) {
-                        if !self.tcx.is_mir_available(function) {
-                            error!("Could not find mir: {:?}", function);
-                        } else {
-                            let start_place = function!(self)
-                                .function_call_start_place()
-                                .expect("Unable to infer start place of function call")
-                                .clone();
-                            self.translate(function, start_place)
-                                .expect("translation error");
-                        }
+                if !skip_function(self.tcx, function) {
+                    if self.tcx.is_foreign_item(function) || !self.tcx.is_mir_available(function) {
+                        info!("emulating mir-less item {:?}", function);
+                        function!(self)
+                            .emulate_foreign(
+                                net,
+                                &function.describe_as_module(self.tcx),
+                                args,
+                                destination.as_ref().expect("diverging foreign function"),
+                                cleanup,
+                            )
+                            .expect("unknown foreign item");
+                    } else {
+                        let start_place = function!(self)
+                            .function_call_start_place()
+                            .expect("Unable to infer start place of function call")
+                            .clone();
+                        self.translate(function, start_place)
+                            .expect("translation error");
                     }
+                } else {
+                    error!("skipped {}", function.describe_as_module(self.tcx));
                 }
             }
 

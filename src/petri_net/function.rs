@@ -1,3 +1,4 @@
+use crate::intrinsics::*;
 use crate::petri_net::basic_block::BasicBlock;
 use pnml;
 use pnml::{NodeRef, PageRef, PetriNet, Result};
@@ -32,6 +33,18 @@ macro_rules! active_block_mut {
     };
 }
 
+macro_rules! block_to_start_place {
+    ($function:ident, $net:ident, $block:expr) => {
+        match $function.basic_blocks.get($block) {
+            Some(block) => block.start_place().clone(),
+            None => $function
+                .add_basic_block($net, $block)?
+                .start_place()
+                .clone(),
+        }
+    };
+}
+
 //TODO: Statics and constants are handled inefficiently. They are just copied by every
 // push of a new stack frame. But they can be just referenced from a root owner (the
 // ownership should be clear on a stack). Maybe it is also possible to handle them per
@@ -54,7 +67,7 @@ pub struct Function<'mir> {
     basic_blocks: HashMap<mir::BasicBlock, BasicBlock>,
     virt_memory: VirtualMemory,
     pub active_block: Option<mir::BasicBlock>,
-    page: PageRef,
+    pub page: PageRef,
     start_place: NodeRef,
     end_place: NodeRef,
 }
@@ -174,11 +187,8 @@ impl<'mir> Function<'mir> {
         let page = self.page.clone();
         let t = net.add_transition(&page)?;
         net.add_arc(&self.page, active_block!(self).end_place(), &t)?;
-        let to = match self.basic_blocks.get(to) {
-            Some(block) => block.start_place(),
-            None => self.add_basic_block(net, to)?.start_place(),
-        };
-        net.add_arc(&page, &t, to)?;
+        let to = block_to_start_place!(self, net, to);
+        net.add_arc(&page, &t, &to)?;
         Ok(())
     }
 
@@ -227,7 +237,6 @@ impl<'mir> Function<'mir> {
         program_end_place: &NodeRef,
     ) -> Result<()> {
         // TODO: make the unwind and resume semantic clear
-
         let source_place = active_block!(self).end_place();
         let mut t = net.add_transition(&self.page)?;
         t.name(net, "unwind")?;
@@ -244,23 +253,66 @@ impl<'mir> Function<'mir> {
         unwind: &Option<mir::BasicBlock>,
     ) -> Result<()> {
         let page = self.page.clone();
-        let target_start = match self.basic_blocks.get(target) {
-            Some(block) => block.start_place().clone(),
-            None => self.add_basic_block(net, target)?.start_place().clone(),
-        };
-        let source = active_block!(self).end_place();
+        let target_start = block_to_start_place!(self, net, target);
+        let source = active_block!(self).end_place().clone();
         let mut t = net.add_transition(&page)?;
         t.name(net, "drop")?;
-        net.add_arc(&page, source, &t)?;
+        net.add_arc(&page, &source, &t)?;
         net.add_arc(&page, &t, &target_start)?;
 
         if let Some(unwind) = unwind {
-            let unwind_start = self.basic_blocks.get(unwind).unwrap().start_place();
+            let unwind_start = block_to_start_place!(self, net, unwind);
             let mut t_unwind = net.add_transition(&self.page)?;
             t.name(net, "drop_unwind")?;
-            net.add_arc(&self.page, source, &t_unwind)?;
-            net.add_arc(&self.page, &t_unwind, unwind_start)?;
+            net.add_arc(&self.page, &source, &t_unwind)?;
+            net.add_arc(&self.page, &t_unwind, &unwind_start)?;
         };
+        Ok(())
+    }
+
+    pub fn emulate_foreign(
+        &mut self,
+        net: &mut PetriNet,
+        intrinsic_name: &str,
+        args: &Vec<mir::Operand<'_>>,
+        destination: &(mir::Place<'_>, mir::BasicBlock),
+        cleanup: &Option<mir::BasicBlock>,
+    ) -> Result<()> {
+        let (destination_node, destination_block) = {
+            let node = place_to_data_node(&destination.0, &self.virt_memory).clone();
+            let block = block_to_start_place!(self, net, &destination.1);
+            (node, block)
+        };
+        let cleanup = match cleanup {
+            Some(block) => Some(block_to_start_place!(self, net, &block)),
+            None => None,
+        };
+        let source = active_block!(self).end_place().clone();
+        let mut arg_nodes = Vec::new();
+        for operand in args {
+            arg_nodes.push(op_to_data_node(operand, &self.virt_memory));
+        }
+        match intrinsic_name {
+            name if name.contains("std::ops::DerefMut::deref_mut")
+                | name.contains("std::convert::Into::into")
+                | name.contains("std::ops::FnOnce::call_once")
+                | name.contains("std::ops::Deref::deref")
+                | name.contains("std::intrinsics::transmute") =>
+            {
+                generic_foreign(
+                    net,
+                    &self.page,
+                    &arg_nodes,
+                    &source,
+                    &destination_node,
+                    &destination_block,
+                    cleanup,
+                )?
+            }
+            _ => {
+                error!("unimplemented intrinsic: {}", intrinsic_name);
+            }
+        }
         Ok(())
     }
 
@@ -328,5 +380,49 @@ impl<'mir> Function<'mir> {
                 .insert(mir_local, Data::Local(local));
         }
         Ok(())
+    }
+}
+
+pub(crate) fn op_to_data_node<'a>(
+    operand: &mir::Operand<'_>,
+    memory: &'a VirtualMemory,
+) -> &'a NodeRef {
+    match operand {
+        mir::Operand::Copy(place) | mir::Operand::Move(place) => place_to_data_node(place, memory),
+        // Constants are always valid reads
+        // until using a high level petri net the value is not important and can be ignored
+        // Constants can be seen as one petri net place that is accessed
+        mir::Operand::Constant(_) => memory.get_constant(),
+    }
+}
+
+pub(crate) fn place_to_data_node<'a>(
+    place: &mir::Place<'_>,
+    memory: &'a VirtualMemory,
+) -> &'a NodeRef {
+    let local = place.local_or_deref_local();
+    match local {
+        Some(local) => {
+            &memory
+                .get_local(&local)
+                .expect("local not found")
+                .live_place
+        }
+        //FIXME: is it valid to just use the outermost local if nothing better was found?
+        // maybe this functions helps?
+        // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.intern_place_elems
+        // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.mk_place_elems
+        None => match &place.base {
+            mir::PlaceBase::Local(local) => {
+                &memory.get_local(local).expect("local not found").live_place
+            }
+            // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.promoted_mir
+            mir::PlaceBase::Static(statik) => match statik.kind {
+                mir::StaticKind::Static => panic!("staticKind::Static -> cannot convert"),
+                mir::StaticKind::Promoted(promoted, _) => &memory
+                    .get_static(&promoted)
+                    .expect("promoted statik not found"),
+            },
+        },
     }
 }

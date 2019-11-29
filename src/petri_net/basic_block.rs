@@ -1,4 +1,6 @@
-use crate::petri_net::function::{Data, Local, LocalKey, VirtualMemory};
+use crate::petri_net::function::{
+    op_to_data_node, place_to_data_node, Data, Local, LocalKey, VirtualMemory,
+};
 use pnml;
 use pnml::{NodeRef, PageRef, PetriNet, Result};
 use rustc::mir;
@@ -149,28 +151,28 @@ impl Statement {
     ) -> Result<()> {
         use mir::Rvalue;
         let llocal = place_to_data_node(lvalue, virt_memory);
-        add_node_to_statement(net, page, llocal, &self.stmt_transition, virt_memory)?;
+        add_node_to_statement(net, page, llocal, &self.stmt_transition)?;
         match rvalue {
             Rvalue::Use(ref operand)
             | Rvalue::Repeat(ref operand, _)
             | Rvalue::UnaryOp(_, ref operand) => {
                 let op_place = op_to_data_node(operand, virt_memory);
-                add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
+                add_node_to_statement(net, page, op_place, &self.stmt_transition)?;
             }
             Rvalue::Ref(_, _, ref place) | Rvalue::Len(ref place) => {
                 let place_local = place_to_data_node(place, virt_memory);
-                add_node_to_statement(net, page, place_local, &self.stmt_transition, virt_memory)?;
+                add_node_to_statement(net, page, place_local, &self.stmt_transition)?;
             }
             Rvalue::Cast(ref _kind, ref operand, ref _typ) => {
                 let op_place = op_to_data_node(operand, virt_memory);
-                add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
+                add_node_to_statement(net, page, op_place, &self.stmt_transition)?;
             }
             Rvalue::BinaryOp(ref _operator, ref loperand, ref roperand)
             | Rvalue::CheckedBinaryOp(ref _operator, ref loperand, ref roperand) => {
                 let lop_place = op_to_data_node(loperand, virt_memory);
                 let rop_place = op_to_data_node(roperand, virt_memory);
-                add_node_to_statement(net, page, lop_place, &self.stmt_transition, virt_memory)?;
-                add_node_to_statement(net, page, rop_place, &self.stmt_transition, virt_memory)?;
+                add_node_to_statement(net, page, lop_place, &self.stmt_transition)?;
+                add_node_to_statement(net, page, rop_place, &self.stmt_transition)?;
             }
             Rvalue::NullaryOp(ref operator, ref _typ) => match operator {
                 // these are essentially a lookup of the type size in the static space
@@ -181,13 +183,13 @@ impl Statement {
             },
             Rvalue::Discriminant(ref place) => {
                 let op_place = place_to_data_node(place, virt_memory);
-                add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
+                add_node_to_statement(net, page, op_place, &self.stmt_transition)?;
             }
             Rvalue::Aggregate(ref _kind, ref operands) => {
                 //FIXME: does the kind matter?
                 for operand in operands {
                     let op_place = op_to_data_node(operand, virt_memory);
-                    add_node_to_statement(net, page, op_place, &self.stmt_transition, virt_memory)?;
+                    add_node_to_statement(net, page, op_place, &self.stmt_transition)?;
                 }
             }
         }
@@ -200,47 +202,8 @@ fn add_node_to_statement(
     page: &PageRef,
     place_node: &NodeRef,
     statement_transition: &NodeRef,
-    memory: &VirtualMemory,
 ) -> Result<()> {
     net.add_arc(page, &place_node, statement_transition)?;
     net.add_arc(page, statement_transition, &place_node)?;
     Ok(())
-}
-
-fn op_to_data_node<'a>(operand: &mir::Operand<'_>, memory: &'a VirtualMemory) -> &'a NodeRef {
-    match operand {
-        mir::Operand::Copy(place) | mir::Operand::Move(place) => place_to_data_node(place, memory),
-        // Constants are always valid reads
-        // until using a high level petri net the value is not important and can be ignored
-        // Constants can be seen as one petri net place that is accessed
-        mir::Operand::Constant(_) => memory.get_constant(),
-    }
-}
-
-fn place_to_data_node<'a>(place: &mir::Place<'_>, memory: &'a VirtualMemory) -> &'a NodeRef {
-    let local = place.local_or_deref_local();
-    match local {
-        Some(local) => {
-            &memory
-                .get_local(&local)
-                .expect("local not found")
-                .live_place
-        }
-        //FIXME: is it valid to just use the outermost local if nothing better was found?
-        // maybe this functions helps?
-        // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.intern_place_elems
-        // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.mk_place_elems
-        None => match &place.base {
-            mir::PlaceBase::Local(local) => {
-                &memory.get_local(local).expect("local not found").live_place
-            }
-            // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.promoted_mir
-            mir::PlaceBase::Static(statik) => match statik.kind {
-                mir::StaticKind::Static => panic!("staticKind::Static -> cannot convert"),
-                mir::StaticKind::Promoted(promoted, _) => &memory
-                    .get_static(&promoted)
-                    .expect("promoted statik not found"),
-            },
-        },
-    }
 }
