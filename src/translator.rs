@@ -1,10 +1,11 @@
 use crate::petri_net::function::{Data, Function};
-use pnml::{NodeRef, PNMLDocument, PageRef, PetriNetRef, Result};
+use petri_to_star::{NodeRef, PetriNet, PlaceRef, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir::visit::Visitor;
 use rustc::mir::visit::*;
 use rustc::mir::{self, *};
 use rustc::ty::{self, Ty, TyCtxt};
+use std::convert::TryFrom;
 
 struct CallStack<T> {
     stack: Vec<T>,
@@ -48,19 +49,14 @@ impl<T> CallStack<T> {
 pub struct Translator<'tcx> {
     tcx: TyCtxt<'tcx>,
     call_stack: CallStack<Function<'tcx>>,
-    pnml_doc: PNMLDocument,
-    net_ref: PetriNetRef,
-    root_page: PageRef,
+    net: PetriNet,
     unwind_abort_place: NodeRef,
     program_end_place: Option<NodeRef>,
 }
 
 macro_rules! net {
     ($translator:ident) => {
-        $translator
-            .pnml_doc
-            .petri_net_data($translator.net_ref)
-            .expect("corrupted net reference")
+        &mut $translator.net
     };
 }
 
@@ -72,21 +68,13 @@ macro_rules! function {
 
 impl<'tcx> Translator<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Result<Self> {
-        let mut pnml_doc = PNMLDocument::new();
-        //TODO: find a descriptive name e.g. name of the program
-        let net_ref = pnml_doc.add_petri_net(None);
-        let net = pnml_doc
-            .petri_net_data(net_ref)
-            .expect("corrupted net reference");
-        let root_page = net.add_page(Some("entry"));
-        let mut unwind_abort_place = net.add_place(&root_page)?;
-        unwind_abort_place.name(net, "unwind_abort")?;
+        let mut net = PetriNet::new();
+        let unwind_abort_place = net.add_place();
+        unwind_abort_place.name(&mut net, "unwind_abort".into())?;
         Ok(Translator {
             tcx,
             call_stack: CallStack::new(),
-            pnml_doc,
-            net_ref,
-            root_page,
+            net,
             unwind_abort_place,
             program_end_place: None,
         })
@@ -95,20 +83,20 @@ impl<'tcx> Translator<'tcx> {
     pub fn petrify(&mut self, main_fn: DefId) -> Result<String> {
         let start_place = {
             let net = net!(self);
-            let mut place = net.add_place(&self.root_page)?;
-            place.name(net, "program_start")?;
-            place.initial_marking(net, 1)?;
+            let place = net.add_place();
+            place.name(net, "program_start".into())?;
+            PlaceRef::try_from(place)?.marking(net, 1)?;
             place
         };
         self.program_end_place = {
             let net = net!(self);
-            let mut place = net.add_place(&self.root_page)?;
-            place.name(net, "program_end")?;
-            place.initial_marking(net, 1)?;
+            let place = net.add_place();
+            place.name(net, "program_end".into())?;
+            PlaceRef::try_from(place)?.marking(net, 1)?;
             Some(place)
         };
         self.translate(main_fn, start_place)?;
-        Ok(self.pnml_doc.to_xml()?)
+        Ok(self.net.to_pnml_string()?)
     }
 
     fn translate<'a>(&mut self, function: DefId, start_place: NodeRef) -> Result<()> {
@@ -117,7 +105,7 @@ impl<'tcx> Translator<'tcx> {
         let body = self.tcx.optimized_mir(function);
         let (const_memory, mut static_memory) = if self.call_stack.is_empty() {
             (
-                Data::Constant(net!(self).add_place(&self.root_page)?),
+                Data::Constant(net!(self).add_place()),
                 std::collections::HashMap::new(),
             )
         } else {
@@ -129,7 +117,7 @@ impl<'tcx> Translator<'tcx> {
         // add missing promoted statics
         for (promoted, _) in self.tcx.promoted_mir(function).iter_enumerated() {
             if static_memory.get(&promoted).is_none() {
-                let promoted_node = net!(self).add_place(&self.root_page)?;
+                let promoted_node = net!(self).add_place();
                 static_memory.insert(promoted, Data::Static(promoted_node));
             } else {
                 warn!("duplicate of promoted static");
@@ -149,6 +137,21 @@ impl<'tcx> Translator<'tcx> {
         self.call_stack.pop();
         info!("\nLEAVING function: {:?}\n", fn_name);
         Ok(())
+    }
+
+    fn is_panic(tcx: TyCtxt<'_>, function: DefId) -> bool {
+        match function.describe_as_module(tcx) {
+            // panic functions of libstd
+            name if name.contains("std::rt::begin_panic_fmt")
+                | name.contains("std::rt::begin_panic")
+                // panic functions of libcore
+                | name.contains("core::panicking::panic")
+                | name.contains("core::panicking::panic_fmt") =>
+            {
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -232,9 +235,9 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             }
 
             SwitchInt {
-                discr,
-                switch_ty,
-                values,
+                discr: _,
+                switch_ty: _,
+                values: _,
                 targets,
             } => function!(self)
                 .switch_int(net, targets)
@@ -273,7 +276,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                         panic!("")
                     }
                 };
-                if !skip_function(self.tcx, function) {
+                if !Self::is_panic(self.tcx, function) {
                     if self.tcx.is_foreign_item(function) || !self.tcx.is_mir_available(function) {
                         info!("emulating mir-less item {:?}", function);
                         function!(self)
@@ -294,12 +297,15 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                             .expect("translation error");
                     }
                 } else {
-                    error!("skipped {}", function.describe_as_module(self.tcx));
+                    function!(self)
+                        .handle_panic(net, self.unwind_abort_place)
+                        .expect("panic handling error");
+                    //error!("skipped {}", function.describe_as_module(self.tcx));
                 }
             }
 
             Drop {
-                location,
+                location: _,
                 target,
                 unwind,
             } => function!(self)
@@ -310,19 +316,19 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
 
             Yield { .. } => panic!("Yield"),
             GeneratorDrop => panic!("GeneratorDrop"),
-            DropAndReplace { .. } => warn!("DropAndReplace"),
+            DropAndReplace { .. } => panic!("DropAndReplace"),
             Resume => {
                 function!(self)
                     .resume(
                         net,
-                        &self.unwind_abort_place,
-                        self.program_end_place
-                            .as_ref()
-                            .expect("missing program end place"),
+                        self.unwind_abort_place,
+                        self.program_end_place.expect("missing program end place"),
                     )
                     .expect("resume failed");
             }
-            Abort => panic!("Abort"),
+            Abort => function!(self)
+                .handle_panic(net, self.unwind_abort_place)
+                .expect("panic handling error"),
             FalseEdges { .. } => bug!(
                 "should have been eliminated by\
                  `simplify_branches` mir pass"
@@ -331,7 +337,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 "should have been eliminated by\
                  `simplify_branches` mir pass"
             ),
-            Unreachable => error!("unreachable"),
+            Unreachable => debug!("unreachable"),
         }
         self.super_terminator_kind(kind, location);
     }
@@ -391,24 +397,5 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
 
     fn visit_source_scope(&mut self, scope: &SourceScope) {
         self.super_source_scope(scope);
-    }
-}
-
-fn skip_function<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
-    //FIXME: check if a call for a panic always result in a panic (it might be caught later)
-    if tcx.lang_items().items().contains(&Some(def_id)) {
-        debug!("LangItem: {:?}", def_id);
-    };
-    if Some(def_id) == tcx.lang_items().panic_fn() {
-        trace!("panic");
-        return true;
-    }
-    let description = def_id.describe_as_module(tcx);
-    if description.contains("std::rt::begin_panic_fmt") {
-        true
-    } else if description.contains("std::panicking::panicking") {
-        true
-    } else {
-        false
     }
 }

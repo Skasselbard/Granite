@@ -11,7 +11,7 @@ env_logger = "0.6.1"
 log = "0.4"
 xml-rs = "0.8"
 indexed_vec = "1.1.2"
-pnml = { git = "https://github.com/Skasselbard/RustPNML"}
+petri_to_star = { git = "https://github.com/Skasselbard/PetriToStar"}
 
 [dev-dependencies]
 assert_cmd = "0.10"

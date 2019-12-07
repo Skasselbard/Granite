@@ -1,11 +1,11 @@
 use crate::intrinsics::*;
 use crate::petri_net::basic_block::BasicBlock;
-use pnml;
-use pnml::{NodeRef, PageRef, PetriNet, Result};
+use petri_to_star::{NodeRef, PetriNet, PlaceRef, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir;
 use rustc_index::vec::IndexVec;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 macro_rules! active_block {
     ($function:ident) => {
@@ -67,7 +67,6 @@ pub struct Function<'mir> {
     basic_blocks: HashMap<mir::BasicBlock, BasicBlock>,
     virt_memory: VirtualMemory,
     pub active_block: Option<mir::BasicBlock>,
-    pub page: PageRef,
     start_place: NodeRef,
     end_place: NodeRef,
 }
@@ -94,14 +93,14 @@ pub enum LocalKey {
 }
 
 impl Local {
-    pub fn new<'net>(net: &'net mut PetriNet, page: &PageRef, name: &str) -> Result<Self> {
-        let mut prenatal_place = net.add_place(page)?;
-        prenatal_place.initial_marking(net, 1)?;
-        let mut live_place = net.add_place(page)?;
-        let mut dead_place = net.add_place(page)?;
-        prenatal_place.name(net, &format!("local_{}_uninitialized", name))?;
-        live_place.name(net, &format!("local_{}_live", name))?;
-        dead_place.name(net, &format!("local_{}_dead", name))?;
+    pub fn new<'net>(net: &'net mut PetriNet, name: &str) -> Result<Self> {
+        let prenatal_place = net.add_place();
+        PlaceRef::try_from(prenatal_place)?.marking(net, 1)?;
+        let live_place = net.add_place();
+        let dead_place = net.add_place();
+        prenatal_place.name(net, format!("local_{}_uninitialized", name))?;
+        live_place.name(net, format!("local_{}_live", name))?;
+        dead_place.name(net, format!("local_{}_dead", name))?;
         Ok(Local {
             prenatal_place,
             live_place,
@@ -127,17 +126,17 @@ impl VirtualMemory {
         }
     }
 
-    pub fn get_static(&self, statik: &mir::Promoted) -> Option<&NodeRef> {
+    pub fn get_static(&self, statik: &mir::Promoted) -> Option<NodeRef> {
         match self.statics.get(statik) {
-            Some(Data::Static(statik)) => Some(statik),
+            Some(Data::Static(statik)) => Some(*statik),
             None => None,
             Some(_) => panic!("Non static stored in statics space"),
         }
     }
 
-    pub fn get_constant(&self) -> &NodeRef {
+    pub fn get_constant(&self) -> NodeRef {
         match &self.constants {
-            Data::Constant(constant) => constant,
+            Data::Constant(constant) => *constant,
             _ => panic!("Non constant stored in constant space"),
         }
     }
@@ -153,8 +152,7 @@ impl<'mir> Function<'mir> {
         static_memory: &HashMap<mir::Promoted, Data>,
         name: &str,
     ) -> Result<Self> {
-        let page = net.add_page(Some(name));
-        let end_place = net.add_place(&page)?;
+        let end_place = net.add_place();
         let mut function = Function {
             mir_id,
             mir_body,
@@ -166,7 +164,6 @@ impl<'mir> Function<'mir> {
                 statics: static_memory.clone(),
             },
             active_block: None,
-            page,
             start_place,
             end_place,
         };
@@ -184,11 +181,10 @@ impl<'mir> Function<'mir> {
     }
 
     pub fn goto<'net>(&mut self, net: &'net mut PetriNet, to: &mir::BasicBlock) -> Result<()> {
-        let page = self.page.clone();
-        let t = net.add_transition(&page)?;
-        net.add_arc(&self.page, active_block!(self).end_place(), &t)?;
+        let t = net.add_transition();
+        net.add_arc(active_block!(self).end_place(), t)?;
         let to = block_to_start_place!(self, net, to);
-        net.add_arc(&page, &t, &to)?;
+        net.add_arc(t, to)?;
         Ok(())
     }
 
@@ -199,15 +195,15 @@ impl<'mir> Function<'mir> {
                 if let Some(_) = self.basic_blocks.get(&mir_block) {
                     active_block!(self).end_place()
                 } else {
-                    &self.start_place
+                    self.start_place
                 }
             } else {
-                &self.start_place
+                self.start_place
             }
         };
-        let t = net.add_transition(&self.page)?;
-        net.add_arc(&self.page, source, &t)?;
-        net.add_arc(&self.page, &t, &self.end_place)?;
+        let t = net.add_transition();
+        net.add_arc(source, t)?;
+        net.add_arc(t, self.end_place)?;
         Ok(())
     }
 
@@ -222,10 +218,10 @@ impl<'mir> Function<'mir> {
             };
             let source_end = active_block!(self).end_place();
             let target_start = self.basic_blocks.get(bb).unwrap().start_place();
-            let mut connection_transition = net.add_transition(&self.page)?;
-            connection_transition.name(net, &format!("switch int{}", bb.index()))?;
-            net.add_arc(&self.page, &source_end, &connection_transition)?;
-            net.add_arc(&self.page, &connection_transition, &target_start)?;
+            let connection_transition = net.add_transition();
+            connection_transition.name(net, format!("switch int{}", bb.index()))?;
+            net.add_arc(source_end, connection_transition)?;
+            net.add_arc(connection_transition, target_start)?;
         }
         Ok(())
     }
@@ -233,16 +229,16 @@ impl<'mir> Function<'mir> {
     pub fn resume<'net>(
         &mut self,
         net: &'net mut PetriNet,
-        unwind_place: &NodeRef,
-        program_end_place: &NodeRef,
+        unwind_place: NodeRef,
+        program_end_place: NodeRef,
     ) -> Result<()> {
         // TODO: make the unwind and resume semantic clear
         let source_place = active_block!(self).end_place();
-        let mut t = net.add_transition(&self.page)?;
-        t.name(net, "unwind")?;
-        net.add_arc(&self.page, source_place, &t)?;
-        net.add_arc(&self.page, &t, unwind_place)?;
-        net.add_arc(&self.page, &t, program_end_place)?;
+        let t = net.add_transition();
+        t.name(net, "unwind".into())?;
+        net.add_arc(source_place, t)?;
+        net.add_arc(t, unwind_place)?;
+        net.add_arc(t, program_end_place)?;
         Ok(())
     }
 
@@ -252,20 +248,19 @@ impl<'mir> Function<'mir> {
         target: &mir::BasicBlock,
         unwind: &Option<mir::BasicBlock>,
     ) -> Result<()> {
-        let page = self.page.clone();
         let target_start = block_to_start_place!(self, net, target);
         let source = active_block!(self).end_place().clone();
-        let mut t = net.add_transition(&page)?;
-        t.name(net, "drop")?;
-        net.add_arc(&page, &source, &t)?;
-        net.add_arc(&page, &t, &target_start)?;
+        let t = net.add_transition();
+        t.name(net, "drop".into())?;
+        net.add_arc(source, t)?;
+        net.add_arc(t, target_start)?;
 
         if let Some(unwind) = unwind {
             let unwind_start = block_to_start_place!(self, net, unwind);
-            let mut t_unwind = net.add_transition(&self.page)?;
-            t.name(net, "drop_unwind")?;
-            net.add_arc(&self.page, &source, &t_unwind)?;
-            net.add_arc(&self.page, &t_unwind, &unwind_start)?;
+            let t_unwind = net.add_transition();
+            t.name(net, "drop_unwind".into())?;
+            net.add_arc(source, t_unwind)?;
+            net.add_arc(t_unwind, unwind_start)?;
         };
         Ok(())
     }
@@ -297,22 +292,58 @@ impl<'mir> Function<'mir> {
                 | name.contains("std::convert::Into::into")
                 | name.contains("std::ops::FnOnce::call_once")
                 | name.contains("std::ops::Deref::deref")
+                | name.contains("std::panicking::panicking")
+                //TODO: deallocation might be deadlock relevant
+                | name.contains("alloc::alloc::__rust_dealloc")
+                | name.contains("std::intrinsics::min_align_of_val")
+                | name.contains("std::intrinsics::caller_location")
+                | name.contains("std::intrinsics::size_of_val")
+                //TODO: atomic functions need to be explained
+                | name.contains("std::intrinsics::atomic_load_acq")
+                | name.contains("std::intrinsics::atomic_load_relaxed")
+                | name.contains("std::intrinsics::atomic_load")
                 | name.contains("std::intrinsics::transmute") =>
             {
                 generic_foreign(
                     net,
-                    &self.page,
                     &arg_nodes,
-                    &source,
-                    &destination_node,
-                    &destination_block,
+                    source,
+                    destination_node,
+                    destination_block,
+                    cleanup,
+                )?
+            }
+            name if name.contains("libc::unix::pthread_mutexattr_init")
+                | name.contains("libc::unix::pthread_mutex_init")
+                | name.contains("libc::unix::pthread_mutexattr_settype")
+                | name.contains("libc::unix::pthread_mutexattr_destro")
+                | name.contains("libc::unix::pthread_mutex_lock") =>
+            {
+                warn!("mutex intrinsic {}", name);
+                generic_foreign(
+                    net,
+                    &arg_nodes,
+                    source,
+                    destination_node,
+                    destination_block,
                     cleanup,
                 )?
             }
             _ => {
-                error!("unimplemented intrinsic: {}", intrinsic_name);
+                error!(
+                    "unimplemented intrinsic: {} args:{:?} dest:{:?}, cleanup:{:?}",
+                    intrinsic_name, args, destination, cleanup
+                );
             }
         }
+        Ok(())
+    }
+
+    pub fn handle_panic(&mut self, net: &mut PetriNet, panic_place: NodeRef) -> Result<()> {
+        let source = active_block!(self).end_place().clone();
+        let t = net.add_transition();
+        net.add_arc(source, t)?;
+        net.add_arc(t, panic_place)?;
         Ok(())
     }
 
@@ -331,7 +362,7 @@ impl<'mir> Function<'mir> {
         Ok(())
     }
 
-    pub fn function_call_start_place(&self) -> Result<&NodeRef> {
+    pub fn function_call_start_place(&self) -> Result<NodeRef> {
         let block = active_block!(self);
         Ok(block.end_place())
     }
@@ -349,8 +380,8 @@ impl<'mir> Function<'mir> {
         net: &'net mut PetriNet,
         block: &mir::BasicBlock,
     ) -> Result<&BasicBlock> {
-        let start_place = net.add_place(&self.page)?;
-        let bb = BasicBlock::new(net, &self.page, &start_place)?;
+        let start_place = net.add_place();
+        let bb = BasicBlock::new(net, start_place)?;
         self.basic_blocks
             .insert(*block, bb)
             .expect_none("this should not happen");
@@ -370,11 +401,8 @@ impl<'mir> Function<'mir> {
         // decl: mir::LocalDecl => data of a local in mir data structure
         // local: crate:: .. ::Local => petri net representation of a local
         for (mir_local, decl) in locals.iter_enumerated() {
-            let name = match decl.name {
-                Some(name) => format!("{}: {}", name, decl.ty),
-                None => format!("_: {}", decl.ty),
-            };
-            let local = Local::new(net, &self.page, &name)?;
+            let name = format!("{}: {}", mir_local.index(), decl.ty);
+            let local = Local::new(net, &name)?;
             self.virt_memory
                 .locals
                 .insert(mir_local, Data::Local(local));
@@ -383,10 +411,7 @@ impl<'mir> Function<'mir> {
     }
 }
 
-pub(crate) fn op_to_data_node<'a>(
-    operand: &mir::Operand<'_>,
-    memory: &'a VirtualMemory,
-) -> &'a NodeRef {
+pub(crate) fn op_to_data_node(operand: &mir::Operand<'_>, memory: &VirtualMemory) -> NodeRef {
     match operand {
         mir::Operand::Copy(place) | mir::Operand::Move(place) => place_to_data_node(place, memory),
         // Constants are always valid reads
@@ -396,14 +421,11 @@ pub(crate) fn op_to_data_node<'a>(
     }
 }
 
-pub(crate) fn place_to_data_node<'a>(
-    place: &mir::Place<'_>,
-    memory: &'a VirtualMemory,
-) -> &'a NodeRef {
+pub(crate) fn place_to_data_node(place: &mir::Place<'_>, memory: &VirtualMemory) -> NodeRef {
     let local = place.local_or_deref_local();
     match local {
         Some(local) => {
-            &memory
+            memory
                 .get_local(&local)
                 .expect("local not found")
                 .live_place
@@ -414,12 +436,12 @@ pub(crate) fn place_to_data_node<'a>(
         // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.mk_place_elems
         None => match &place.base {
             mir::PlaceBase::Local(local) => {
-                &memory.get_local(local).expect("local not found").live_place
+                memory.get_local(local).expect("local not found").live_place
             }
             // https://doc.rust-lang.org/nightly/nightly-rustc/rustc/ty/context/struct.TyCtxt.html#method.promoted_mir
             mir::PlaceBase::Static(statik) => match statik.kind {
                 mir::StaticKind::Static => panic!("staticKind::Static -> cannot convert"),
-                mir::StaticKind::Promoted(promoted, _) => &memory
+                mir::StaticKind::Promoted(promoted, _) => memory
                     .get_static(&promoted)
                     .expect("promoted statik not found"),
             },

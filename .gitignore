@@ -34,3 +34,4 @@ Cargo.lock
 *.nav
 *.snm
 net.pnml
+pnml/pnml2lola/*
