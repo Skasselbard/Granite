@@ -12,6 +12,8 @@ log = "0.4"
 xml-rs = "0.8"
 indexed_vec = "1.1.2"
 petri_to_star = { git = "https://github.com/Skasselbard/PetriToStar"}
+# petri_to_star = { path = "../PetriToStar"}
+clap = "2.33.0"
 
 [dev-dependencies]
 assert_cmd = "0.10"

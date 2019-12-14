@@ -80,34 +80,42 @@ impl<'tcx> Translator<'tcx> {
         })
     }
 
-    pub fn petrify(&mut self, main_fn: DefId) -> Result<String> {
+    pub fn petrify(&mut self, main_fn: DefId) -> Result<&PetriNet> {
         let start_place = {
             let net = net!(self);
             let place = net.add_place();
-            place.name(net, "program_start".into())?;
             PlaceRef::try_from(place)?.marking(net, 1)?;
             place
         };
         self.program_end_place = {
             let net = net!(self);
             let place = net.add_place();
-            place.name(net, "program_end".into())?;
-            PlaceRef::try_from(place)?.marking(net, 1)?;
+            place.name(net, "program end".into())?;
             Some(place)
         };
-        self.translate(main_fn, start_place)?;
-        Ok(self.net.to_pnml_string()?)
+        self.translate(
+            main_fn,
+            start_place,
+            self.program_end_place
+                .expect("no program end place defined"),
+        )?;
+        Ok(&self.net)
     }
 
-    fn translate<'a>(&mut self, function: DefId, start_place: NodeRef) -> Result<()> {
+    fn translate<'a>(
+        &mut self,
+        function: DefId,
+        start_place: NodeRef,
+        return_place: NodeRef,
+    ) -> Result<()> {
         let fn_name = function.describe_as_module(self.tcx);
+        start_place.name(&mut self.net, fn_name.clone())?;
         info!("\n\nENTERING function: {:?}", fn_name);
         let body = self.tcx.optimized_mir(function);
         let (const_memory, mut static_memory) = if self.call_stack.is_empty() {
-            (
-                Data::Constant(net!(self).add_place()),
-                std::collections::HashMap::new(),
-            )
+            let constants = net!(self).add_place();
+            constants.name(net!(self), "CONSTANTS".into())?;
+            (Data::Constant(constants), std::collections::HashMap::new())
         } else {
             (
                 function!(self).constants().clone(),
@@ -118,19 +126,23 @@ impl<'tcx> Translator<'tcx> {
         for (promoted, _) in self.tcx.promoted_mir(function).iter_enumerated() {
             if static_memory.get(&promoted).is_none() {
                 let promoted_node = net!(self).add_place();
+                promoted_node.name(
+                    net!(self),
+                    format!("Promoted_{} {}", promoted.index(), fn_name),
+                )?;
                 static_memory.insert(promoted, Data::Static(promoted_node));
             } else {
                 warn!("duplicate of promoted static");
             }
         }
         let petri_function = Function::new(
-            function,
+            fn_name.clone(),
             body,
             net!(self),
             start_place,
             &const_memory,
             &static_memory,
-            &fn_name,
+            return_place,
         )?;
         self.call_stack.push(petri_function);
         self.visit_body(body);
@@ -172,16 +184,13 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             }
             _ => error!("tried to translate unoptimized MIR"),
         }
-        function!(self)
-            .add_locals(net!(self), &body.local_decls)
-            .expect("cannot add locals to petri net function");
         self.super_body(body);
     }
 
     fn visit_basic_block_data(&mut self, block: BasicBlock, data: &BasicBlockData<'tcx>) {
         trace!("---BasicBlock {:?}---", block);
         function!(self)
-            .activate_block(net!(self), &block)
+            .activate_block(net!(self), block)
             .expect("unable to activate basic");
         self.super_basic_block_data(block, data)
     }
@@ -221,6 +230,9 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         trace!("{:?}", kind);
         use rustc::mir::TerminatorKind::*;
         let net = net!(self);
+        function!(self)
+            .finish_basic_block(net)
+            .expect("cannot end statement block");
         match kind {
             Return => {
                 // trace!("Return");
@@ -230,7 +242,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             Goto { target } => {
                 // trace!("Goto");
                 function!(self)
-                    .goto(net, target)
+                    .goto(net, *target)
                     .expect("Goto Block failed");
             }
 
@@ -285,7 +297,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                                 &function.describe_as_module(self.tcx),
                                 args,
                                 destination.as_ref().expect("diverging foreign function"),
-                                cleanup,
+                                *cleanup,
                             )
                             .expect("unknown foreign item");
                     } else {
@@ -293,7 +305,11 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                             .function_call_start_place()
                             .expect("Unable to infer start place of function call")
                             .clone();
-                        self.translate(function, start_place)
+                        let (_, return_block) = destination.as_ref().expect("diverging function");
+                        let return_place = function!(self)
+                            .get_basic_block_start(net, *return_block)
+                            .expect("cannot find return block");
+                        self.translate(function, start_place, return_place)
                             .expect("translation error");
                     }
                 } else {
@@ -309,7 +325,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 target,
                 unwind,
             } => function!(self)
-                .drop(net, target, unwind)
+                .drop(net, *target, *unwind)
                 .expect("drop failed"),
 
             Assert { .. } => panic!("assert"),

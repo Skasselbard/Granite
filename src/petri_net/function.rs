@@ -35,12 +35,9 @@ macro_rules! active_block_mut {
 
 macro_rules! block_to_start_place {
     ($function:ident, $net:ident, $block:expr) => {
-        match $function.basic_blocks.get($block) {
-            Some(block) => block.start_place().clone(),
-            None => $function
-                .add_basic_block($net, $block)?
-                .start_place()
-                .clone(),
+        match $function.basic_blocks.get(&$block) {
+            Some(block) => block.start_place(),
+            None => $function.add_basic_block($net, $block)?.start_place(),
         }
     };
 }
@@ -62,13 +59,13 @@ pub struct VirtualMemory {
 
 #[derive(Debug)]
 pub struct Function<'mir> {
-    pub mir_id: DefId,
+    pub name: String,
     pub mir_body: &'mir mir::Body<'mir>,
     basic_blocks: HashMap<mir::BasicBlock, BasicBlock>,
     virt_memory: VirtualMemory,
     pub active_block: Option<mir::BasicBlock>,
     start_place: NodeRef,
-    end_place: NodeRef,
+    return_place: NodeRef,
 }
 
 #[derive(Debug, Clone)]
@@ -98,9 +95,9 @@ impl Local {
         PlaceRef::try_from(prenatal_place)?.marking(net, 1)?;
         let live_place = net.add_place();
         let dead_place = net.add_place();
-        prenatal_place.name(net, format!("local_{}_uninitialized", name))?;
-        live_place.name(net, format!("local_{}_live", name))?;
-        dead_place.name(net, format!("local_{}_dead", name))?;
+        prenatal_place.name(net, format!("{} uninitialized", name))?;
+        live_place.name(net, format!("{} live", name))?;
+        dead_place.name(net, format!("{} dead", name))?;
         Ok(Local {
             prenatal_place,
             live_place,
@@ -144,17 +141,16 @@ impl VirtualMemory {
 
 impl<'mir> Function<'mir> {
     pub fn new<'net>(
-        mir_id: DefId,
+        name: String,
         mir_body: &'mir mir::Body<'mir>,
         net: &'net mut PetriNet,
         start_place: NodeRef,
         constant_memory: &Data,
         static_memory: &HashMap<mir::Promoted, Data>,
-        name: &str,
+        return_place: NodeRef,
     ) -> Result<Self> {
-        let end_place = net.add_place();
         let mut function = Function {
-            mir_id,
+            name,
             mir_body,
             basic_blocks: HashMap::new(),
             //FIXME: unnessecary cloning of statics and constants
@@ -165,7 +161,7 @@ impl<'mir> Function<'mir> {
             },
             active_block: None,
             start_place,
-            end_place,
+            return_place,
         };
         function.add_locals(net, &function.mir_body.local_decls)?;
         Ok(function)
@@ -180,8 +176,13 @@ impl<'mir> Function<'mir> {
         Ok(())
     }
 
-    pub fn goto<'net>(&mut self, net: &'net mut PetriNet, to: &mir::BasicBlock) -> Result<()> {
+    pub fn finish_basic_block(&self, net: &mut PetriNet) -> Result<()> {
+        active_block!(self).finish_statement_block(net)
+    }
+
+    pub fn goto<'net>(&mut self, net: &'net mut PetriNet, to: mir::BasicBlock) -> Result<()> {
         let t = net.add_transition();
+        t.name(net, "Goto".into())?;
         net.add_arc(active_block!(self).end_place(), t)?;
         let to = block_to_start_place!(self, net, to);
         net.add_arc(t, to)?;
@@ -202,8 +203,9 @@ impl<'mir> Function<'mir> {
             }
         };
         let t = net.add_transition();
+        t.name(net, "Return".into())?;
         net.add_arc(source, t)?;
-        net.add_arc(t, self.end_place)?;
+        net.add_arc(t, self.return_place)?;
         Ok(())
     }
 
@@ -214,7 +216,7 @@ impl<'mir> Function<'mir> {
     ) -> Result<()> {
         for bb in targets {
             if !self.basic_blocks.contains_key(bb) {
-                self.add_basic_block(net, bb)?;
+                self.add_basic_block(net, *bb)?;
             };
             let source_end = active_block!(self).end_place();
             let target_start = self.basic_blocks.get(bb).unwrap().start_place();
@@ -245,8 +247,8 @@ impl<'mir> Function<'mir> {
     pub fn drop<'net>(
         &mut self,
         net: &'net mut PetriNet,
-        target: &mir::BasicBlock,
-        unwind: &Option<mir::BasicBlock>,
+        target: mir::BasicBlock,
+        unwind: Option<mir::BasicBlock>,
     ) -> Result<()> {
         let target_start = block_to_start_place!(self, net, target);
         let source = active_block!(self).end_place().clone();
@@ -271,15 +273,15 @@ impl<'mir> Function<'mir> {
         intrinsic_name: &str,
         args: &Vec<mir::Operand<'_>>,
         destination: &(mir::Place<'_>, mir::BasicBlock),
-        cleanup: &Option<mir::BasicBlock>,
+        cleanup: Option<mir::BasicBlock>,
     ) -> Result<()> {
         let (destination_node, destination_block) = {
             let node = place_to_data_node(&destination.0, &self.virt_memory).clone();
-            let block = block_to_start_place!(self, net, &destination.1);
+            let block = block_to_start_place!(self, net, destination.1);
             (node, block)
         };
         let cleanup = match cleanup {
-            Some(block) => Some(block_to_start_place!(self, net, &block)),
+            Some(block) => Some(block_to_start_place!(self, net, block)),
             None => None,
         };
         let source = active_block!(self).end_place().clone();
@@ -330,10 +332,18 @@ impl<'mir> Function<'mir> {
                 )?
             }
             _ => {
-                error!(
-                    "unimplemented intrinsic: {} args:{:?} dest:{:?}, cleanup:{:?}",
+                warn!(
+                    "unchecked intrinsic: {} args:{:?} dest:{:?}, cleanup:{:?}",
                     intrinsic_name, args, destination, cleanup
                 );
+                generic_foreign(
+                    net,
+                    &arg_nodes,
+                    source,
+                    destination_node,
+                    destination_block,
+                    cleanup,
+                )?
             }
         }
         Ok(())
@@ -342,6 +352,7 @@ impl<'mir> Function<'mir> {
     pub fn handle_panic(&mut self, net: &mut PetriNet, panic_place: NodeRef) -> Result<()> {
         let source = active_block!(self).end_place().clone();
         let t = net.add_transition();
+        t.name(net, "panic".into())?;
         net.add_arc(source, t)?;
         net.add_arc(t, panic_place)?;
         Ok(())
@@ -350,15 +361,15 @@ impl<'mir> Function<'mir> {
     pub fn activate_block<'net>(
         &mut self,
         net: &'net mut PetriNet,
-        block: &mir::BasicBlock,
+        block: mir::BasicBlock,
     ) -> Result<()> {
-        match self.basic_blocks.get(block) {
+        match self.basic_blocks.get(&block) {
             Some(_) => {}
             None => {
                 self.add_basic_block(net, block)?;
             }
         };
-        self.active_block = Some(*block);
+        self.active_block = Some(block);
         Ok(())
     }
 
@@ -378,20 +389,34 @@ impl<'mir> Function<'mir> {
     fn add_basic_block<'net>(
         &mut self,
         net: &'net mut PetriNet,
-        block: &mir::BasicBlock,
+        block: mir::BasicBlock,
     ) -> Result<&BasicBlock> {
-        let start_place = net.add_place();
+        let start_place = if self.basic_blocks.is_empty() {
+            self.start_place
+        } else {
+            let place = net.add_place();
+            place.name(net, format!("bb {}", block.index()))?;
+            place
+        };
         let bb = BasicBlock::new(net, start_place)?;
         self.basic_blocks
-            .insert(*block, bb)
+            .insert(block, bb)
             .expect_none("this should not happen");
         Ok(self
             .basic_blocks
-            .get(block)
+            .get(&block)
             .expect("this also should not happen"))
     }
 
-    pub fn add_locals<'net, 'tcx>(
+    pub fn get_basic_block_start(
+        &mut self,
+        net: &mut PetriNet,
+        block: mir::BasicBlock,
+    ) -> Result<NodeRef> {
+        Ok(block_to_start_place!(self, net, block))
+    }
+
+    fn add_locals<'net, 'tcx>(
         &mut self,
         net: &'net mut PetriNet,
         locals: &IndexVec<mir::Local, mir::LocalDecl<'tcx>>,
@@ -401,7 +426,7 @@ impl<'mir> Function<'mir> {
         // decl: mir::LocalDecl => data of a local in mir data structure
         // local: crate:: .. ::Local => petri net representation of a local
         for (mir_local, decl) in locals.iter_enumerated() {
-            let name = format!("{}: {}", mir_local.index(), decl.ty);
+            let name = format!("{}_{}: {}", self.name, mir_local.index(), decl.ty);
             let local = Local::new(net, &name)?;
             self.virt_memory
                 .locals

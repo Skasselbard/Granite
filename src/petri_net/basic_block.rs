@@ -14,7 +14,6 @@ pub struct BasicBlock {
 pub struct Statement {
     start_place: NodeRef,
     stmt_transition: NodeRef,
-    end_place: NodeRef,
 }
 
 impl BasicBlock {
@@ -35,12 +34,14 @@ impl BasicBlock {
         virt_memory: &VirtualMemory,
     ) -> Result<()> {
         // if its the first statement, it shares the first place with the basic block
-        // otherwise the and place of the last statement is the start place of the new one
+        // otherwise the end place of the last statement is the start place of the new one
         let start_place = {
             if let Some(statement) = self.statements.last() {
-                statement.end_place().clone()
+                let place = net.add_place();
+                net.add_arc(statement.stmt_transition, place)?;
+                place
             } else {
-                self.start_place().clone()
+                self.start_place()
             }
         };
 
@@ -48,6 +49,20 @@ impl BasicBlock {
             .push(Statement::new(net, start_place, statement, virt_memory)?);
         Ok(())
     }
+
+    pub fn finish_statement_block(&self, net: &mut PetriNet) -> Result<()> {
+        if let Some(statement) = self.statements.last() {
+            net.add_arc(statement.stmt_transition, self.end_place)?;
+        } else {
+            // if there is only a terminator (no statement) we have to connect start and end place of the block
+            let t = net.add_transition();
+            t.name(net, "NOP".into())?;
+            net.add_arc(self.start_place, t)?;
+            net.add_arc(t, self.end_place)?;
+        }
+        Ok(())
+    }
+
     pub fn start_place(&self) -> NodeRef {
         self.start_place
     }
@@ -63,26 +78,21 @@ impl Statement {
         statement: &mir::Statement<'_>,
         virt_memory: &VirtualMemory,
     ) -> Result<Self> {
-        let end_place = net.add_place();
         // the statement transition is its important part
         // it "executes" the effect of the statement
         let stmt_transition = net.add_transition();
+        stmt_transition.name(net, format!("{:?}", statement.kind))?;
         //stmt_transition.name(net, "");
         net.add_arc(start_place, stmt_transition)?;
-        net.add_arc(stmt_transition, end_place)?;
         let stmt = Statement {
             start_place: start_place.clone(),
             stmt_transition,
-            end_place,
         };
         stmt.build(net, statement, virt_memory)?;
         Ok(stmt)
     }
     pub fn start_place(&self) -> &NodeRef {
         &self.start_place
-    }
-    pub fn end_place(&self) -> &NodeRef {
-        &self.end_place
     }
 
     fn build<'net>(

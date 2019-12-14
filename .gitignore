@@ -33,5 +33,5 @@ Cargo.lock
 *.log
 *.nav
 *.snm
-net.pnml
+net.*
 pnml/pnml2lola/*

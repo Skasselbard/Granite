@@ -53,7 +53,7 @@ fn compile_time_sysroot() -> Option<String> {
 pub fn parse_arguments() -> (Vec<String>, Vec<String>) {
     // Parse our arguments and split them across `rustc` and `fairum`.
     let mut rustc_args = vec![];
-    let mut fairum_args = vec![];
+    let mut granite_args = vec![];
     let mut after_dashdash = false;
     for arg in std::env::args() {
         if rustc_args.is_empty() {
@@ -61,7 +61,7 @@ pub fn parse_arguments() -> (Vec<String>, Vec<String>) {
             rustc_args.push(arg);
         } else if after_dashdash {
             // Everything that comes after are our args.
-            fairum_args.push(arg);
+            granite_args.push(arg);
         } else {
             match arg.as_str() {
                 "--" => {
@@ -73,7 +73,7 @@ pub fn parse_arguments() -> (Vec<String>, Vec<String>) {
             }
         }
     }
-    (rustc_args, fairum_args)
+    (rustc_args, granite_args)
 }
 
 pub fn check_sysroot(rustc_args: &mut Vec<String>) {
