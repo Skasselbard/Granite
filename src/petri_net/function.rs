@@ -65,7 +65,7 @@ pub struct Function<'mir> {
     virt_memory: VirtualMemory,
     pub active_block: Option<mir::BasicBlock>,
     start_place: NodeRef,
-    return_place: NodeRef,
+    return_flow: NodeRef,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +75,7 @@ pub enum Data {
     Constant(NodeRef),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Local {
     pub(crate) prenatal_place: NodeRef,
     pub(crate) live_place: NodeRef,
@@ -144,10 +144,12 @@ impl<'mir> Function<'mir> {
         name: String,
         mir_body: &'mir mir::Body<'mir>,
         net: &'net mut PetriNet,
-        start_place: NodeRef,
+        mut args: Vec<Local>, // data that is used from the previous stack frame
+        data_return: Local,   // node which stores the return value
+        start_place: NodeRef, // where to start from
         constant_memory: &Data,
         static_memory: &HashMap<mir::Promoted, Data>,
-        return_place: NodeRef,
+        return_flow: NodeRef, // where to continue after the call
     ) -> Result<Self> {
         let mut function = Function {
             name,
@@ -161,9 +163,12 @@ impl<'mir> Function<'mir> {
             },
             active_block: None,
             start_place,
-            return_place,
+            return_flow,
         };
-        function.add_locals(net, &function.mir_body.local_decls)?;
+        // add the locals but remember the locals from the previous stack frame
+        // index zero is the return local followed by the function arguments
+        args.insert(0, data_return);
+        function.add_locals(net, &function.mir_body.local_decls, args)?;
         Ok(function)
     }
 
@@ -205,7 +210,7 @@ impl<'mir> Function<'mir> {
         let t = net.add_transition();
         t.name(net, "Return".into())?;
         net.add_arc(source, t)?;
-        net.add_arc(t, self.return_place)?;
+        net.add_arc(t, self.return_flow)?;
         Ok(())
     }
 
@@ -260,7 +265,37 @@ impl<'mir> Function<'mir> {
         if let Some(unwind) = unwind {
             let unwind_start = block_to_start_place!(self, net, unwind);
             let t_unwind = net.add_transition();
-            t.name(net, "drop_unwind".into())?;
+            t_unwind.name(net, "drop_unwind".into())?;
+            net.add_arc(source, t_unwind)?;
+            net.add_arc(t_unwind, unwind_start)?;
+        };
+        Ok(())
+    }
+
+    pub fn assert(
+        &mut self,
+        net: &mut PetriNet,
+        condition: &mir::Operand<'_>,
+        _expected: bool,
+        target: mir::BasicBlock,
+        cleanup: Option<mir::BasicBlock>,
+    ) -> Result<()> {
+        let target_start = block_to_start_place!(self, net, target);
+        let source = active_block!(self).end_place().clone();
+        let op_place = op_to_data_node(condition, &self.virt_memory);
+        let t = net.add_transition();
+        t.name(net, "drop".into())?;
+        net.add_arc(source, t)?;
+        net.add_arc(t, target_start)?;
+        net.add_arc(op_place, t)?;
+        net.add_arc(t, op_place)?;
+        // represents reading the condition
+        net.add_arc(t, self.virt_memory.get_constant())?;
+        net.add_arc(self.virt_memory.get_constant(), t)?;
+        if let Some(unwind) = cleanup {
+            let unwind_start = block_to_start_place!(self, net, unwind);
+            let t_unwind = net.add_transition();
+            t_unwind.name(net, "assert_unwind".into())?;
             net.add_arc(source, t_unwind)?;
             net.add_arc(t_unwind, unwind_start)?;
         };
@@ -271,6 +306,7 @@ impl<'mir> Function<'mir> {
         &mut self,
         net: &mut PetriNet,
         intrinsic_name: &str,
+        //TODO: check arguments -> are noderefs needed?
         args: &Vec<mir::Operand<'_>>,
         destination: &(mir::Place<'_>, mir::BasicBlock),
         cleanup: Option<mir::BasicBlock>,
@@ -420,6 +456,7 @@ impl<'mir> Function<'mir> {
         &mut self,
         net: &'net mut PetriNet,
         locals: &IndexVec<mir::Local, mir::LocalDecl<'tcx>>,
+        known_locals: Vec<Local>,
     ) -> Result<()> {
         // a lot of locals here:
         // mir_local: mir::Local => index for local decls in mir data structure
@@ -427,12 +464,20 @@ impl<'mir> Function<'mir> {
         // local: crate:: .. ::Local => petri net representation of a local
         for (mir_local, decl) in locals.iter_enumerated() {
             let name = format!("{}_{}: {}", self.name, mir_local.index(), decl.ty);
-            let local = Local::new(net, &name)?;
+            let local = if let Some(local) = known_locals.get(mir_local.index()) {
+                *local
+            } else {
+                Local::new(net, &name)?
+            };
             self.virt_memory
                 .locals
                 .insert(mir_local, Data::Local(local));
         }
         Ok(())
+    }
+
+    pub fn get_local(&self, local: &mir::Local) -> Option<&Local> {
+        self.virt_memory.get_local(local)
     }
 }
 

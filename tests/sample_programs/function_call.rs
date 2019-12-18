@@ -4,5 +4,6 @@ pub fn main() {
 }
 
 fn call(i: usize) -> usize {
+    // generates an assert terminator
     i * 2
 }

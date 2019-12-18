@@ -1,4 +1,4 @@
-use crate::petri_net::function::{Data, Function};
+use crate::petri_net::function::{Data, Function, Local};
 use petri_to_star::{NodeRef, PetriNet, PlaceRef, Result};
 use rustc::hir::def_id::DefId;
 use rustc::mir::visit::Visitor;
@@ -93,8 +93,11 @@ impl<'tcx> Translator<'tcx> {
             place.name(net, "program end".into())?;
             Some(place)
         };
+        let data_return = Local::new(net!(self), "main_return")?;
         self.translate(
             main_fn,
+            Vec::new(), //TODO: Arguments would be important for HiLvl Nets
+            data_return,
             start_place,
             self.program_end_place
                 .expect("no program end place defined"),
@@ -105,8 +108,10 @@ impl<'tcx> Translator<'tcx> {
     fn translate<'a>(
         &mut self,
         function: DefId,
+        args: Vec<Local>,
+        data_return: Local,
         start_place: NodeRef,
-        return_place: NodeRef,
+        return_flow: NodeRef,
     ) -> Result<()> {
         let fn_name = function.describe_as_module(self.tcx);
         start_place.name(&mut self.net, fn_name.clone())?;
@@ -139,10 +144,12 @@ impl<'tcx> Translator<'tcx> {
             fn_name.clone(),
             body,
             net!(self),
+            args,
+            data_return,
             start_place,
             &const_memory,
             &static_memory,
-            return_place,
+            return_flow,
         )?;
         self.call_stack.push(petri_function);
         self.visit_body(body);
@@ -305,11 +312,32 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                             .function_call_start_place()
                             .expect("Unable to infer start place of function call")
                             .clone();
-                        let (_, return_block) = destination.as_ref().expect("diverging function");
+                        let (return_place, return_block) =
+                            destination.as_ref().expect("diverging function");
+                        let data_return = *function!(self)
+                            .get_local(
+                                &return_place
+                                    .local_or_deref_local()
+                                    .expect("deref return place failed"),
+                            )
+                            .expect("return local not found");
+                        let stack_top = function!(self); // needed in the closure
+                        let args = args
+                            .iter()
+                            .map(|operand| {
+                                let mir_local = match operand {
+                                    mir::Operand::Copy(place) | mir::Operand::Move(place) => {
+                                        place.local_or_deref_local().expect("deref argument failed")
+                                    }
+                                    Operand::Constant(_) => panic!("unexpected constant argument"),
+                                };
+                                *stack_top.get_local(&mir_local).expect("argument not found")
+                            })
+                            .collect();
                         let return_place = function!(self)
                             .get_basic_block_start(net, *return_block)
                             .expect("cannot find return block");
-                        self.translate(function, start_place, return_place)
+                        self.translate(function, args, data_return, start_place, return_place)
                             .expect("translation error");
                     }
                 } else {
@@ -328,7 +356,15 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                 .drop(net, *target, *unwind)
                 .expect("drop failed"),
 
-            Assert { .. } => panic!("assert"),
+            Assert {
+                ref cond,
+                ref expected,
+                ref msg,
+                ref target,
+                ref cleanup,
+            } => function!(self)
+                .assert(net, cond, *expected, *target, *cleanup)
+                .expect("assert failed"),
 
             Yield { .. } => panic!("Yield"),
             GeneratorDrop => panic!("GeneratorDrop"),
@@ -407,7 +443,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     //     self.super_substs(substs);
     // }
 
-    fn visit_local_decl(&mut self, local: Local, local_decl: &LocalDecl<'tcx>) {
+    fn visit_local_decl(&mut self, local: mir::Local, local_decl: &LocalDecl<'tcx>) {
         self.super_local_decl(local, local_decl);
     }
 
