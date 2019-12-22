@@ -108,13 +108,19 @@ impl Statement {
             }
             StatementKind::StorageLive(local) => {
                 let local = virt_memory.get_local(&local).expect("local not found");
-                net.add_arc(local.prenatal_place, self.stmt_transition)?;
+                net.add_arc(
+                    local.prenatal_place.expect("no uninitialized place"),
+                    self.stmt_transition,
+                )?;
                 net.add_arc(self.stmt_transition, local.live_place)?;
             }
             StatementKind::StorageDead(local) => {
                 let local = virt_memory.get_local(&local).expect("local not found");
                 net.add_arc(local.live_place, self.stmt_transition)?;
-                net.add_arc(self.stmt_transition, local.dead_place)?;
+                net.add_arc(
+                    self.stmt_transition,
+                    local.dead_place.expect("no dead place"),
+                )?;
             }
             StatementKind::SetDiscriminant { place, .. } => {
                 let place_node = place_to_data_node(place, virt_memory);

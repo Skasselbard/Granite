@@ -177,18 +177,7 @@ impl<'tcx> Translator<'tcx> {
 impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
     fn visit_body(&mut self, body: &Body<'tcx>) {
         match body.phase {
-            MirPhase::Optimized => {
-                // trace!("source scopes: {:?}", body.source_scopes);
-                // trace!(
-                //     "source scopes local data: {:?}",
-                //     body.source_scope_local_data
-                // );
-                //trace!("promoted: {:?}", entry_body.promoted);
-                //trace!("return type: {:?}", body.return_ty());
-                //trace!("yield type: {:?}", body.yield_ty);
-                //trace!("generator drop: {:?}", body.generator_drop);
-                //trace!("local declarations: {:?}", body.local_decls());
-            }
+            MirPhase::Optimized => {}
             _ => error!("tried to translate unoptimized MIR"),
         }
         self.super_body(body);
@@ -202,10 +191,6 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         self.super_basic_block_data(block, data)
     }
 
-    fn visit_source_scope_data(&mut self, scope_data: &SourceScopeData) {
-        self.super_source_scope_data(scope_data);
-    }
-
     fn visit_statement(&mut self, statement: &Statement<'tcx>, location: Location) {
         trace!("{:?}: ", statement.kind);
         function!(self)
@@ -213,25 +198,6 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             .expect("unable to add statement");
         self.super_statement(statement, location);
     }
-
-    fn visit_terminator(&mut self, terminator: &Terminator<'tcx>, location: Location) {
-        //trace!("{:?}", terminator);
-        //warn!("Successors: {:?}", terminator.successors());
-        self.super_terminator(terminator, location);
-    }
-    // fn visit_place_base(
-    //     &mut self,
-    //     base: &PlaceBase<'tcx>,
-    //     context: PlaceContext,
-    //     location: Location,
-    // ) {
-    //     warn!("placeBase: {:?}", base);
-    //     self.super_place_base(base, context, location);
-    // }
-    // fn visit_place(&mut self, place: &Place<'tcx>, context: PlaceContext, location: Location) {
-    //     warn!("place: {:?}", place);
-    //     self.super_place(place, context, location);
-    // }
 
     fn visit_terminator_kind(&mut self, kind: &TerminatorKind<'tcx>, location: Location) {
         trace!("{:?}", kind);
@@ -303,8 +269,9 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                                 net,
                                 &function.describe_as_module(self.tcx),
                                 args,
-                                destination.as_ref().expect("diverging foreign function"),
+                                destination,
                                 *cleanup,
+                                self.unwind_abort_place,
                             )
                             .expect("unknown foreign item");
                     } else {
@@ -312,8 +279,10 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                             .function_call_start_place()
                             .expect("Unable to infer start place of function call")
                             .clone();
-                        let (return_place, return_block) =
-                            destination.as_ref().expect("diverging function");
+                        let (return_place, return_block) = destination.as_ref().expect(&format!(
+                            "diverging function: {}",
+                            function.describe_as_module(self.tcx)
+                        ));
                         let data_return = *function!(self)
                             .get_local(
                                 &return_place
@@ -324,14 +293,34 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                         let stack_top = function!(self); // needed in the closure
                         let args = args
                             .iter()
-                            .map(|operand| {
-                                let mir_local = match operand {
-                                    mir::Operand::Copy(place) | mir::Operand::Move(place) => {
-                                        place.local_or_deref_local().expect("deref argument failed")
+                            .map(|operand| match operand {
+                                mir::Operand::Copy(place) | mir::Operand::Move(place) => {
+                                    match place.local_or_deref_local() {
+                                        Some(local) => {
+                                            *stack_top.get_local(&local).expect("local not found")
+                                        }
+                                        None => match &place.base {
+                                            mir::PlaceBase::Local(local) => *stack_top
+                                                .get_local(local)
+                                                .expect("local not found"),
+                                            mir::PlaceBase::Static(statik) => match statik.kind {
+                                                mir::StaticKind::Static => {
+                                                    panic!("staticKind::Static -> cannot convert")
+                                                }
+                                                mir::StaticKind::Promoted(promoted, _) => stack_top
+                                                    .get_promoted(&promoted)
+                                                    .expect("promoted statik not found"),
+                                            },
+                                        },
                                     }
-                                    Operand::Constant(_) => panic!("unexpected constant argument"),
-                                };
-                                *stack_top.get_local(&mir_local).expect("argument not found")
+                                }
+                                Operand::Constant(_) => {
+                                    let constant = match stack_top.constants() {
+                                        Data::Constant(constant) => *constant,
+                                        _ => panic!("Non constant stored in constant space"),
+                                    };
+                                    Local::new_constant(constant)
+                                }
                             })
                             .collect();
                         let return_place = function!(self)
@@ -359,7 +348,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             Assert {
                 ref cond,
                 ref expected,
-                ref msg,
+                msg: _,
                 ref target,
                 ref cleanup,
             } => function!(self)
@@ -392,62 +381,5 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             Unreachable => debug!("unreachable"),
         }
         self.super_terminator_kind(kind, location);
-    }
-
-    fn visit_assert_message(&mut self, msg: &AssertMessage<'tcx>, location: Location) {
-        self.super_assert_message(msg, location);
-    }
-
-    fn visit_constant(&mut self, constant: &Constant<'tcx>, location: Location) {
-        // trace!("Constant: {:?}", constant);
-        self.super_constant(constant, location);
-    }
-
-    // fn visit_span(&mut self,
-    //               span: &Span) {
-    //     self.super_span(span);
-    // }
-
-    fn visit_source_info(&mut self, source_info: &SourceInfo) {
-        self.super_source_info(source_info);
-    }
-
-    fn visit_ty(&mut self, ty: Ty<'tcx>, _: TyContext) {
-        self.super_ty(ty);
-    }
-
-    fn visit_user_type_projection(&mut self, ty: &UserTypeProjection) {
-        self.super_user_type_projection(ty);
-    }
-
-    // fn visit_user_type_annotation(
-    //     &mut self,
-    //     index: UserTypeAnnotationIndex,
-    //     ty: &CanonicalUserTypeAnnotation<'tcx>,
-    // ) {
-    //     self.super_user_type_annotation(index, ty);
-    // }
-
-    fn visit_region(&mut self, region: &ty::Region<'tcx>, _: Location) {
-        self.super_region(region);
-    }
-
-    fn visit_const(&mut self, constant: &&'tcx ty::Const<'tcx>, _: Location) {
-        // trace!("Const: {:?}", constant);
-        self.super_const(constant);
-    }
-
-    // fn visit_substs(&mut self,
-    //                 substs: &SubstsRef<'tcx>,
-    //                 _: Location) {
-    //     self.super_substs(substs);
-    // }
-
-    fn visit_local_decl(&mut self, local: mir::Local, local_decl: &LocalDecl<'tcx>) {
-        self.super_local_decl(local, local_decl);
-    }
-
-    fn visit_source_scope(&mut self, scope: &SourceScope) {
-        self.super_source_scope(scope);
     }
 }

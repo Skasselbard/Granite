@@ -77,9 +77,9 @@ pub enum Data {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Local {
-    pub(crate) prenatal_place: NodeRef,
+    pub(crate) prenatal_place: Option<NodeRef>, // function arguments can be constant
     pub(crate) live_place: NodeRef,
-    pub(crate) dead_place: NodeRef,
+    pub(crate) dead_place: Option<NodeRef>,
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -91,18 +91,27 @@ pub enum LocalKey {
 
 impl Local {
     pub fn new<'net>(net: &'net mut PetriNet, name: &str) -> Result<Self> {
-        let prenatal_place = net.add_place();
-        PlaceRef::try_from(prenatal_place)?.marking(net, 1)?;
+        let prenatal_place = Some(net.add_place());
+        PlaceRef::try_from(prenatal_place.unwrap())?.marking(net, 1)?;
         let live_place = net.add_place();
-        let dead_place = net.add_place();
-        prenatal_place.name(net, format!("{} uninitialized", name))?;
+        let dead_place = Some(net.add_place());
+        prenatal_place
+            .unwrap()
+            .name(net, format!("{} uninitialized", name))?;
         live_place.name(net, format!("{} live", name))?;
-        dead_place.name(net, format!("{} dead", name))?;
+        dead_place.unwrap().name(net, format!("{} dead", name))?;
         Ok(Local {
             prenatal_place,
             live_place,
             dead_place,
         })
+    }
+    pub fn new_constant(live_place: NodeRef) -> Self {
+        Self {
+            prenatal_place: None,
+            live_place,
+            dead_place: None,
+        }
     }
 }
 
@@ -308,25 +317,25 @@ impl<'mir> Function<'mir> {
         intrinsic_name: &str,
         //TODO: check arguments -> are noderefs needed?
         args: &Vec<mir::Operand<'_>>,
-        destination: &(mir::Place<'_>, mir::BasicBlock),
+        destination: &Option<(mir::Place<'_>, mir::BasicBlock)>,
         cleanup: Option<mir::BasicBlock>,
+        panic_place: NodeRef,
     ) -> Result<()> {
-        let (destination_node, destination_block) = {
-            let node = place_to_data_node(&destination.0, &self.virt_memory).clone();
-            let block = block_to_start_place!(self, net, destination.1);
-            (node, block)
-        };
-        let cleanup = match cleanup {
-            Some(block) => Some(block_to_start_place!(self, net, block)),
-            None => None,
-        };
-        let source = active_block!(self).end_place().clone();
-        let mut arg_nodes = Vec::new();
-        for operand in args {
-            arg_nodes.push(op_to_data_node(operand, &self.virt_memory));
-        }
-        match intrinsic_name {
-            name if name.contains("std::ops::DerefMut::deref_mut")
+        if let Some((destination_node, destination_block)) = destination {
+            let node = place_to_data_node(destination_node, &self.virt_memory).clone();
+            let block = block_to_start_place!(self, net, *destination_block);
+
+            let cleanup = match cleanup {
+                Some(block) => Some(block_to_start_place!(self, net, block)),
+                None => None,
+            };
+            let source = active_block!(self).end_place().clone();
+            let mut arg_nodes = Vec::new();
+            for operand in args {
+                arg_nodes.push(op_to_data_node(operand, &self.virt_memory));
+            }
+            match intrinsic_name {
+                name if name.contains("std::ops::DerefMut::deref_mut")
                 | name.contains("std::convert::Into::into")
                 | name.contains("std::ops::FnOnce::call_once")
                 | name.contains("std::ops::Deref::deref")
@@ -341,45 +350,36 @@ impl<'mir> Function<'mir> {
                 | name.contains("std::intrinsics::atomic_load_relaxed")
                 | name.contains("std::intrinsics::atomic_load")
                 | name.contains("std::intrinsics::transmute") =>
-            {
-                generic_foreign(
-                    net,
-                    &arg_nodes,
-                    source,
-                    destination_node,
-                    destination_block,
-                    cleanup,
-                )?
+                {
+                    generic_foreign(net, &arg_nodes, source, node, block, cleanup)?
+                }
+                name if name.contains("libc::unix::pthread_mutexattr_init")
+                    | name.contains("libc::unix::pthread_mutex_init")
+                    | name.contains("libc::unix::pthread_mutexattr_settype")
+                    | name.contains("libc::unix::pthread_mutexattr_destro")
+                    | name.contains("libc::unix::pthread_mutex_lock") =>
+                {
+                    warn!("mutex intrinsic {}", name);
+                    generic_foreign(net, &arg_nodes, source, node, block, cleanup)?
+                }
+                _ => {
+                    warn!(
+                        "unchecked intrinsic: {} args:{:?} dest:{:?}, cleanup:{:?}",
+                        intrinsic_name, args, destination, cleanup
+                    );
+                    generic_foreign(net, &arg_nodes, source, node, block, cleanup)?
+                }
             }
-            name if name.contains("libc::unix::pthread_mutexattr_init")
-                | name.contains("libc::unix::pthread_mutex_init")
-                | name.contains("libc::unix::pthread_mutexattr_settype")
-                | name.contains("libc::unix::pthread_mutexattr_destro")
-                | name.contains("libc::unix::pthread_mutex_lock") =>
-            {
-                warn!("mutex intrinsic {}", name);
-                generic_foreign(
-                    net,
-                    &arg_nodes,
-                    source,
-                    destination_node,
-                    destination_block,
-                    cleanup,
-                )?
-            }
-            _ => {
-                warn!(
-                    "unchecked intrinsic: {} args:{:?} dest:{:?}, cleanup:{:?}",
-                    intrinsic_name, args, destination, cleanup
-                );
-                generic_foreign(
-                    net,
-                    &arg_nodes,
-                    source,
-                    destination_node,
-                    destination_block,
-                    cleanup,
-                )?
+        } else {
+            // diverging function (destination = none)
+            match intrinsic_name {
+                name if name.contains("std::alloc::handle_alloc_error")
+                    | name.contains("alloc::raw_vec::capacity_overflow")
+                    | name.contains("std::result::unwrap_failed") =>
+                {
+                    self.handle_panic(net, panic_place)?
+                }
+                _ => panic!("unhandled diverging foreign: {}", intrinsic_name),
             }
         }
         Ok(())
@@ -478,6 +478,13 @@ impl<'mir> Function<'mir> {
 
     pub fn get_local(&self, local: &mir::Local) -> Option<&Local> {
         self.virt_memory.get_local(local)
+    }
+
+    pub fn get_promoted(&self, statik: &mir::Promoted) -> Option<Local> {
+        match self.virt_memory.get_static(statik) {
+            Some(node) => Some(Local::new_constant(node)),
+            None => None,
+        }
     }
 }
 
