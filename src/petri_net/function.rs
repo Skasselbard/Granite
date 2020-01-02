@@ -99,6 +99,8 @@ impl Local {
             .unwrap()
             .name(net, format!("{} uninitialized", name))?;
         live_place.name(net, format!("{} live", name))?;
+        //FIXME: remove this line when https://github.com/rust-lang/rust/issues/67400 gets fixed
+        PlaceRef::try_from(live_place)?.marking(net, 1)?;
         dead_place.unwrap().name(net, format!("{} dead", name))?;
         Ok(Local {
             prenatal_place,

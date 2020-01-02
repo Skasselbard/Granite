@@ -120,6 +120,7 @@ impl<'tcx> Translator<'tcx> {
         let (const_memory, mut static_memory) = if self.call_stack.is_empty() {
             let constants = net!(self).add_place();
             constants.name(net!(self), "CONSTANTS".into())?;
+            PlaceRef::try_from(constants)?.marking(&mut self.net, 1)?;
             (Data::Constant(constants), std::collections::HashMap::new())
         } else {
             (
