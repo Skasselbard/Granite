@@ -11,6 +11,7 @@ extern crate rustc;
 extern crate rustc_driver;
 extern crate rustc_index;
 extern crate rustc_interface;
+extern crate rustc_mir;
 
 mod init;
 mod intrinsics;
@@ -34,7 +35,11 @@ impl<'a> rustc_driver::Callbacks for PetriConfig<'a> {
 
         compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let (entry_def_id, _) = tcx.entry_fn(LOCAL_CRATE).expect("no main function found!");
-            let mut pass = Translator::new(tcx).expect("Unable to create translator");
+            let mir_dump = match self.arguments.values_of("mir_dump") {
+                Some(path) => Some(out_file("mir")),
+                None => None,
+            };
+            let mut pass = Translator::new(tcx, mir_dump).expect("Unable to create translator");
             let net = pass.petrify(entry_def_id).expect("translation failed");
             for format in self
                 .arguments
@@ -43,12 +48,15 @@ impl<'a> rustc_driver::Callbacks for PetriConfig<'a> {
             {
                 let mut file = out_file(format);
                 if format == "pnml" {
+                    info!("generating pnml");
                     net.to_pnml(&mut file).expect("write error");
                 }
                 if format == "lola" {
+                    info!("generating lola");
                     net.to_lola(&mut file).expect("write error");
                 }
                 if format == "dot" {
+                    info!("generating dot");
                     net.to_dot(&mut file).expect("write error");
                 }
             }
@@ -73,6 +81,12 @@ pub fn main() {
                 .possible_values(&["pnml", "lola", "dot"])
                 .multiple(true)
                 .default_value("pnml"),
+        )
+        .arg(
+            Arg::with_name("mir_dump")
+                .long("mir_dump")
+                .help("Dumps pretty printed mir into the given file")
+                .required(false),
         );
     let (mut rustc_args, mut granite_args) = init::parse_arguments();
     init::check_sysroot(&mut rustc_args);

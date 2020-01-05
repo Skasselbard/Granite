@@ -5,6 +5,8 @@ use rustc::mir::visit::Visitor;
 use rustc::mir::visit::*;
 use rustc::mir::{self, *};
 use rustc::ty::{self, Ty, TyCtxt};
+use rustc_mir::util::write_mir_pretty;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 
 struct CallStack<T> {
@@ -49,9 +51,11 @@ impl<T> CallStack<T> {
 pub struct Translator<'tcx> {
     tcx: TyCtxt<'tcx>,
     call_stack: CallStack<Function<'tcx>>,
+    visited: HashSet<DefId>,
     net: PetriNet,
     unwind_abort_place: NodeRef,
     program_end_place: Option<NodeRef>,
+    mir_dump: Option<std::fs::File>,
 }
 
 macro_rules! net {
@@ -67,16 +71,18 @@ macro_rules! function {
 }
 
 impl<'tcx> Translator<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>) -> Result<Self> {
+    pub fn new(tcx: TyCtxt<'tcx>, mir_dump: Option<std::fs::File>) -> Result<Self> {
         let mut net = PetriNet::new();
         let unwind_abort_place = net.add_place();
         unwind_abort_place.name(&mut net, "unwind_abort".into())?;
         Ok(Translator {
             tcx,
             call_stack: CallStack::new(),
+            visited: HashSet::new(),
             net,
             unwind_abort_place,
             program_end_place: None,
+            mir_dump,
         })
     }
 
@@ -116,6 +122,12 @@ impl<'tcx> Translator<'tcx> {
         let fn_name = function.describe_as_module(self.tcx);
         start_place.name(&mut self.net, fn_name.clone())?;
         info!("\n\nENTERING function: {:?}", fn_name);
+        if let Some(file) = &mut self.mir_dump {
+            if !self.visited.contains(&function) {
+                write_mir_pretty(self.tcx, Some(function), file).unwrap();
+            }
+        };
+        self.visited.insert(function);
         let body = self.tcx.optimized_mir(function);
         let (const_memory, mut static_memory) = if self.call_stack.is_empty() {
             let constants = net!(self).add_place();
