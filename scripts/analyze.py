@@ -12,7 +12,8 @@ def exec_lola(formula):
 
 def general_deadlock():
     # p_2 marks program termination
-    exec_lola('--formula=EF (DEADLOCK AND p_2 = 0)')
+    #exec_lola('--formula=AG(EF(p_2 = 1))')
+    exec_lola('--formula=EF (DEADLOCK AND (p_2 = 0 AND p_0 = 0))')
 
 def unconditional_deadlock():
     exec_lola('--formula=EF DEADLOCK')
@@ -74,6 +75,6 @@ if __name__ == "__main__":
     if args.panic:
         can_panic()
     if args.neighbors:
-        neighbors(args.n)
+        neighbors(args.neighbors)
     if args.visualize:
         visualize("net.dot")
