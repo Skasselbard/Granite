@@ -12,7 +12,8 @@
     pgfplots, %diagramme
     caption, %tabbellen beschreibungen
     url,
-    listings %code blöcke
+    listings, %code blöcke
+    hyperref %links
     }
 \usetikzlibrary{positioning,shapes,shadows,arrows, arrows.meta, calc,
     automata, petri %petri netze
@@ -25,7 +26,7 @@
 \renewcommand{\matrikel}{Matrikel-Nr.: 8200839}
 \renewcommand{\course}{Informatik}
 \renewcommand{\betreuer}{Prof. Dr. Karsten Wolf}
-\renewcommand{\Titel}{}
+\renewcommand{\Titel}{Eine Petrinetzsemantik für Rust}
 \renewcommand{\Type}{Masterarbeit } %Bachelorarbeit, Projektarbeit, Literaturarbeit, etc.
 
 \definecolor{verylightgray}{rgb}{0.95,0.95,0.95}
@@ -56,6 +57,7 @@
 \include{chapters/introduction}
 \include{chapters/relatedWork}
 \include{chapters/approach}
+\include{chapters/result}
 \include{chapters/conclusion}
 \include{chapters/futureWork}
 \bibliography{IEEEabrv,literature}

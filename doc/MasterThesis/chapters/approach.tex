@@ -2,3 +2,171 @@
 
 
 \chapter{Approach}
+short outline\\
+rust program -> compiler interception -> translation to petri net (formalism) -> verification with external tool
+\begin{verbatim}
+  - concrete approach of verification
+  - typical: language -> formalism
+  - petri nets
+  - tools -> LoLa
+\end{verbatim}
+
+\section{Rust Compiler}
+\label{app_rust}
+\begin{verbatim}
+- what is a compiler
+- where can rustc be found
+- other rustc information
+    - maintaining structure
+    - development process
+    - release strategie
+    - main releases
+    - cargo integration
+
+- steps
+    - Parsing input 
+    - Name resolution, macro expansion, and configuration
+    - Lowering to HIR
+    - Type-checking and subsequent analyses
+    - Lowering to MIR and post-processing
+    - Translation to LLVM and LLVM optimizations
+    - Linking
+\end{verbatim}
+
+\section{Interception strategie}
+\label{app_intercept}
+\begin{verbatim}
+- try to use as many language features as possible
+- with least possible effort
+- after name resolution
+- after code generation
+    - avoids complicated language features
+- after borrow checking
+    - increases the assumptions we can make
+    - reduces cases we have to consider
+- after static optimization
+    - constant propagation
+- before loosing rust features
+- before being machine dependent
+-> seemingly best solution: mir
+\end{verbatim}
+
+\section{Mid-level Intermediate Representation (MIR)}
+\label{app_mir}
+\begin{verbatim}
+- control flow graph
+
+other stuff from rustc book
+
+      - how to traverse
+      - single elements
+\end{verbatim}
+
+\section{Petri Net Representation}
+\label{app_petri}
+\begin{verbatim}
+    - petri net formalism and format (high level? edge descriptions)
+\end{verbatim}
+
+\section{Translation}
+\label{app_trans}
+\begin{verbatim}
+- entry point
+    - using main
+    - ignoring pre main
+        - os specific
+        - independent from program semantics
+        - not all mir available
+- elements
+    - programm
+        - starts
+        - ends
+    - memory
+        - constants
+        - statics
+        - places
+        - locals
+    - function
+        - no translation memory (multiple calls = multiple translations)
+        - stack like structure
+        - no recursion possible with this approach
+        - can panic
+        - can diverge
+        - can be empty (in theorie)
+    - basic blocks
+    - statement
+        - rvalues and operands
+        - assign
+        - etc
+    - terminator
+        - goto
+        - switch int
+        - call
+        - etc
+- panic handling
+    - do not catch by other threads
+    - distinguish between successful and unsuccessful termination
+- which parts can or must be excluded from translation
+    - std implementations
+    - part between std::mutex and pthread mutex
+- emulating features
+    - missing mir parts
+    - external libraries
+    - intrinsics and platform specific behavior
+    - mutexes
+        - high level and low level interfaces
+        - choosing high level
+            - harder model checking for more general Mutexes
+            - os independent
+            - less elements need to be translated
+                - smaller net
+                - worse mapping
+        - need to track associated locals
+
+- joining the translations
+    - joining basic elements
+    - joining basic blocks
+    - joining function calls
+    - recursion limits
+\end{verbatim}
+
+
+\section{Model Checking}
+\label{app_mc}
+\begin{verbatim}
+- many tools
+- pnml as common representation language
+    - finding tools on standard site
+- lola integration (format of a petri net)
+  - own format
+- CTL formula
+    - expected deadlocks (program end)
+    - difference between deadlock in petri net and deadlock in program
+        - try to stay analogous
+    - difference between p = 0 and EF( p = 0 )
+    - try to force witness paths
+\end{verbatim}
+
+\section{Test Programs}
+\label{app_test}
+\begin{verbatim}
+- stay simple to prove concept
+    - empty program
+    - programs which cover the basic language features
+    - program with a deadlock
+    - similar program without a deadlock
+\end{verbatim}
+
+\section{Debugging}
+\label{app_debug}
+\begin{verbatim}
+- dot file for small programms
+- finding unconnected nodes
+    - possible bug found
+    - marking live places as result
+    - uninitialized places still have to be marked
+      (or removed entirely)
+- witness path
+    - reducing the complicated net to witness path nodes 
+      and its neighbors
+\end{verbatim}

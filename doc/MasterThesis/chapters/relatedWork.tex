@@ -1,2 +1,83 @@
 % !TEX root = ../main.tex
 \chapter{Background and related work}
+\section{Rust}
+\label{rel_rust}
+\begin{verbatim}
+- rust empowers bla bla \cite{}
+- low level with high level abstractions
+- small runtime
+- no garbage collection
+- controlled memory access
+  - reduced expressiveness in exchange for increased memory safety
+  - features to tackle memory safety issues
+  - borrow checker
+  - no data races etc
+- fast vs safe vs compile time effort \cite{}
+- deadlocks are considered safe in rust terms \cite{}
+\end{verbatim}
+
+\section{Compiler}%?????
+????
+
+
+\section{Parallel Programs}
+\label{rel_para}
+\begin{verbatim}
+- the problem with parallel programs
+  - need to communicate data
+    - messages
+    - shared memory
+  - data needs to be 
+    - consistent 
+    - synchronized (wait for each other)
+    - up to date
+  - deadlocks can easily be introduced with 
+    synchronisation flaws \cite{}
+- what are deadlocks
+  - synchronisation
+  - mutex/semaphore
+  - threads
+  - dining philosophers
+- rust and parallel programs
+- how can deadlocks be introduced in rust
+  - rust and deadlocks -> considered safe code
+\end{verbatim}
+
+\section{Model Checking}
+\label{rel_mc}
+\begin{verbatim}
+- tests vs Model Checking
+  - tests 
+    - only work for specific cases\cite{}
+    - done by program execution
+  - Model Checking 
+    - works in the general case\cite{}
+    - done by program analysis
+- different approaches (BDDs etc.)
+- petri nets!!
+\end{verbatim}
+
+\subsection{Petri-Nets}
+\label{rel_petri}
+\begin{verbatim}
+- 
+\end{verbatim}
+
+\subsection{CTL*}
+\label{rel_ctl}
+\begin{verbatim}
+- 
+\end{verbatim}
+
+\begin{verbatim}
+  - other verification implementations
+    - (verification by language?)
+      - functional programming invariants?
+      - prolog invariants?
+      - languages with verification methods in its design?
+    - c verification
+      - valgrind?
+    - rust verification
+  - petri net verification
+    - bpel
+\end{verbatim}

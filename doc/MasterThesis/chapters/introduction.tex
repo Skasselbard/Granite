@@ -1,3 +1,60 @@
 % !TEX root = ../main.tex
 \chapter{Introduction}
 \label{introduction}
+\section{Motivation}
+High quality work is the desire of a professional;
+Consequently, high quality software is the desire of a professional software engineer.
+
+However, achieving high quality is an ambiguous task, since it is rather context dependent.
+There are some methods though, that address common issues, like bug reduction or code readability.
+A noneexhaustive list might be:
+\begin{itemize}
+  \setlength\itemsep{-0.3em}
+  \item make use of programming patterns
+  \item establish a clear development cycle
+  \item use a bug tracker
+  \item write tests
+  \item make use of static analysis
+  \item make use of model checking
+\end{itemize}
+The last two are particularly interesting because they are executed on the source code itself.
+No human error possible.
+
+Static analysis is typically part of programming languages.
+One popular invariant this approach guarantees, is type safety.
+But some recent programming languages like Rust\cite{} make use of additional invariants.
+In the case of Rust, the ownership model is the most notable additional concept.
+With strict mutability and aliasing rules, the ownership model avoids a variety of memory errors.
+The price is a restricted expressiveness, that manifests in compiler warnings that are unknown to other languages.
+
+Model checking is typically not a feature of programming languages, as it requires a mapping to a formalism.
+But if such a mapping exists, desireable properties can be proven mathematically for all possible runs of the program.
+A formalism that is especially suited to analyse concurrent flow of execution is Petri-nets.
+
+In this work we will try to find a mapping between rust and Petri-nets to analyse properties of concurrency in rust programs.
+We will check for deadlocks as an example property in small programs to prove the concept.
+
+\section{Outline}
+Lets see what we can expect in the following chapters.
+
+Before we can dive into the specifics we need to establish the basics.
+In the background section we will first take a closer look on \hyperlink{rel_rust}{Rust}.
+%TODO: Compiler???
+Next, we look at the challenges of \hyperlink{rel_para}{parallel programming} and why they are important.
+This will also cover the relationship of rust with concurrency.
+And the last significant topic we have to establish is \hyperlink{rel_mc}{Model Checking}.
+
+After we understand those principles, we can move on to the approach taken.
+We will again start with the specifics of \hyperlink{app_rust}{Rust}.
+How can we use generic code to translate that into something we need,
+and what language concepts do we need to understand for translation.
+We will see that the rust language has an \hyperlink{app_mir}{intermediate representation} that simplifies our situation.
+The most important part is probably the \hyperlink{app_trans}{translation} of the language features to a petri net.
+It will contain a detailed description of our mapping and its limits.
+The generated petri net has to be analysed by a Model Checker. 
+\hyperlink{app_mc}{How this is done} und on which \hyperlink{app_test}{test programs} we will discuss next.
+
+Finally wie will \hyperlink{results}{discuss the results} and infer \hyperlink{future}{future work} from the implementations shortcomings.
+\begin{verbatim}
+   Und nun ein toller Satz zur Überleitung.
+\end{verbatim}

@@ -4,6 +4,13 @@
 - APALACHE TLA+ Model Checking https://blog.acolyer.org/2019/11/29/tla-model-checking-made-symbolic/
 
 
+- deadlocks can be masked by unwinds
+  - especially by arc around mutex
+  - need unwind detection e.g:
+    - remember unwind paths
+    - check finishing transition to be a return (etc.)
+
+
 # Outline
 
 ## Abstract
