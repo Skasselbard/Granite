@@ -1,10 +1,11 @@
 use crate::petri_net::function::{Data, Function, Local};
+use crate::petri_net::unique_functions::MutexList;
 use petri_to_star::{NodeRef, PetriNet, PlaceRef, Result};
-use rustc::hir::def_id::DefId;
 use rustc::mir::visit::Visitor;
 use rustc::mir::visit::*;
 use rustc::mir::{self, *};
 use rustc::ty::{self, Ty, TyCtxt};
+use rustc_hir::def_id::DefId;
 use rustc_mir::util::write_mir_pretty;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -53,6 +54,7 @@ pub struct Translator<'tcx> {
     call_stack: CallStack<Function<'tcx>>,
     visited: HashSet<DefId>,
     net: PetriNet,
+    mutex_list: MutexList,
     unwind_abort_place: NodeRef,
     program_end_place: Option<NodeRef>,
     mir_dump: Option<std::fs::File>,
@@ -80,6 +82,7 @@ impl<'tcx> Translator<'tcx> {
             call_stack: CallStack::new(),
             visited: HashSet::new(),
             net,
+            mutex_list: MutexList::new(),
             unwind_abort_place,
             program_end_place: None,
             mir_dump,
@@ -119,8 +122,66 @@ impl<'tcx> Translator<'tcx> {
         start_place: NodeRef,
         return_flow: NodeRef,
     ) -> Result<()> {
-        let fn_name = function.describe_as_module(self.tcx);
+        let fn_name = self.tcx.def_path_str(function);
         start_place.name(&mut self.net, fn_name.clone())?;
+        if Self::is_unique(&fn_name) {
+            self.translate_unique(
+                function,
+                args,
+                data_return,
+                start_place,
+                return_flow,
+                fn_name,
+            )?
+        } else {
+            self.translate_default(
+                function,
+                args,
+                data_return,
+                start_place,
+                return_flow,
+                fn_name,
+            )?
+        }
+        Ok(())
+    }
+
+    fn is_panic(tcx: TyCtxt<'_>, function: DefId) -> bool {
+        match tcx.def_path_str(function) {
+            // panic functions of libstd
+            name if name.contains("std::rt::begin_panic_fmt")
+                | name.contains("std::rt::begin_panic")
+                // panic functions of libcore
+                | name.contains("core::panicking::panic")
+                | name.contains("core::panicking::panic_fmt") =>
+            {
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn is_unique(name: &str) -> bool {
+        match name {
+            name if name.contains("std::sync::Mutex::<T>::new")
+                | name.contains("std::sync::Mutex::<T>::lock")
+                | name.contains("std::sync::Mutex::<T>::try_lock") =>
+            {
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn translate_default(
+        &mut self,
+        function: DefId,
+        args: Vec<Local>,
+        data_return: Local,
+        start_place: NodeRef,
+        return_flow: NodeRef,
+        fn_name: String,
+    ) -> Result<()> {
         info!("\n\nENTERING function: {:?}", fn_name);
         if let Some(file) = &mut self.mir_dump {
             if !self.visited.contains(&function) {
@@ -163,32 +224,60 @@ impl<'tcx> Translator<'tcx> {
             &const_memory,
             &static_memory,
             return_flow,
+            &mut self.mutex_list,
+            self.tcx,
         )?;
         self.call_stack.push(petri_function);
-        self.visit_body(body);
+        self.visit_body(body.unwrap_read_only());
         self.call_stack.pop();
         info!("\nLEAVING function: {:?}\n", fn_name);
         Ok(())
     }
 
-    fn is_panic(tcx: TyCtxt<'_>, function: DefId) -> bool {
-        match function.describe_as_module(tcx) {
-            // panic functions of libstd
-            name if name.contains("std::rt::begin_panic_fmt")
-                | name.contains("std::rt::begin_panic")
-                // panic functions of libcore
-                | name.contains("core::panicking::panic")
-                | name.contains("core::panicking::panic_fmt") =>
-            {
-                true
+    fn translate_unique(
+        &mut self,
+        function: DefId,
+        args: Vec<Local>,
+        data_return: Local,
+        start_place: NodeRef,
+        return_flow: NodeRef,
+        fn_name: String,
+    ) -> Result<()> {
+        let net = &mut self.net;
+
+        // bridge the call
+        let t = net.add_transition();
+        t.name(net, fn_name.clone())?;
+        net.add_arc(start_place, t)?;
+        net.add_arc(t, return_flow)?;
+
+        match fn_name {
+            name if name.contains("std::sync::Mutex::<T>::new") => {
+                let mutex = *self
+                    .mutex_list
+                    .get_linked(data_return)
+                    .expect("mutex not found");
+                net.add_arc(mutex.uninitialized(&self.mutex_list), t)?;
+                net.add_arc(t, mutex.unlocked(&self.mutex_list))?;
             }
-            _ => false,
-        }
+            name if name.contains("std::sync::Mutex::<T>::lock") => {
+                let mutex = *self
+                    .mutex_list
+                    .get_linked(*args.get(0).expect("no mutex lock arg found"))
+                    .expect("mutex not found");
+                self.mutex_list.add_guard(data_return, mutex);
+                net.add_arc(mutex.unlocked(&self.mutex_list), t)?;
+                net.add_arc(t, mutex.locked(&self.mutex_list))?;
+            }
+            name if name.contains("std::sync::Mutex::<T>::try_lock") => unimplemented!(),
+            _ => panic!("unhandled unique function"),
+        };
+        Ok(())
     }
 }
 
 impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
-    fn visit_body(&mut self, body: &Body<'tcx>) {
+    fn visit_body(&mut self, body: ReadOnlyBodyAndCache<'_, 'tcx>) {
         match body.phase {
             MirPhase::Optimized => {}
             _ => error!("tried to translate unoptimized MIR"),
@@ -204,6 +293,30 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
         self.super_basic_block_data(block, data)
     }
 
+    fn visit_assign(&mut self, place: &Place<'tcx>, rvalue: &Rvalue<'tcx>, location: Location) {
+        let function = function!(self);
+
+        let mut locals = Vec::new();
+        match rvalue {
+            Rvalue::Use(operand) | Rvalue::Repeat(operand, _) | Rvalue::Cast(_, operand, _) => {
+                locals.push(function.op_to_local(operand))
+            }
+            Rvalue::Ref(_, _, place) => locals.push(function.place_to_local(place)),
+            Rvalue::Discriminant(place) => locals.push(function.place_to_local(place)),
+            Rvalue::AddressOf(_, _) => locals.push(function.place_to_local(place)),
+            Rvalue::Aggregate(_, _) => unimplemented!(),
+            _ => {}
+        }
+
+        for local in locals {
+            if let Some(mutex) = self.mutex_list.is_linked(local) {
+                debug!("link '{:?}' to mutex '{:?}'", place, mutex);
+                self.mutex_list.link(function.place_to_local(place), *mutex)
+            }
+        }
+        self.super_assign(place, rvalue, location);
+    }
+
     fn visit_statement(&mut self, statement: &Statement<'tcx>, location: Location) {
         trace!("{:?}: ", statement.kind);
         function!(self)
@@ -214,6 +327,29 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
 
     fn visit_terminator_kind(&mut self, kind: &TerminatorKind<'tcx>, location: Location) {
         trace!("{:?}", kind);
+
+        // check mutex links
+        match kind {
+            Call {
+                func: _,
+                ref args,
+                ref destination,
+                ..
+            } => {
+                for arg in args {
+                    let local = function!(self).op_to_local(arg);
+                    if let Some((place, _)) = destination {
+                        if let Some(mutex) = self.mutex_list.is_linked(local) {
+                            debug!("link '{:?}' to mutex '{:?}'", place, mutex);
+                            self.mutex_list
+                                .link(function!(self).place_to_local(place), *mutex)
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
         use rustc::mir::TerminatorKind::*;
         let net = net!(self);
         function!(self)
@@ -280,7 +416,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                         function!(self)
                             .emulate_foreign(
                                 net,
-                                &function.describe_as_module(self.tcx),
+                                &self.tcx.def_path_str(function),
                                 args,
                                 destination,
                                 *cleanup,
@@ -294,7 +430,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                             .clone();
                         let (return_place, return_block) = destination.as_ref().expect(&format!(
                             "diverging function: {}",
-                            function.describe_as_module(self.tcx)
+                            self.tcx.def_path_str(function),
                         ));
                         let data_return = *function!(self)
                             .get_local(
@@ -306,35 +442,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                         let stack_top = function!(self); // needed in the closure
                         let args = args
                             .iter()
-                            .map(|operand| match operand {
-                                mir::Operand::Copy(place) | mir::Operand::Move(place) => {
-                                    match place.local_or_deref_local() {
-                                        Some(local) => {
-                                            *stack_top.get_local(&local).expect("local not found")
-                                        }
-                                        None => match &place.base {
-                                            mir::PlaceBase::Local(local) => *stack_top
-                                                .get_local(local)
-                                                .expect("local not found"),
-                                            mir::PlaceBase::Static(statik) => match statik.kind {
-                                                mir::StaticKind::Static => {
-                                                    panic!("staticKind::Static -> cannot convert")
-                                                }
-                                                mir::StaticKind::Promoted(promoted, _) => stack_top
-                                                    .get_promoted(&promoted)
-                                                    .expect("promoted statik not found"),
-                                            },
-                                        },
-                                    }
-                                }
-                                Operand::Constant(_) => {
-                                    let constant = match stack_top.constants() {
-                                        Data::Constant(constant) => *constant,
-                                        _ => panic!("Non constant stored in constant space"),
-                                    };
-                                    Local::new_constant(constant)
-                                }
-                            })
+                            .map(|operand| stack_top.op_to_local(operand))
                             .collect();
                         let return_place = function!(self)
                             .get_basic_block_start(net, *return_block)
@@ -346,7 +454,6 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
                     function!(self)
                         .handle_panic(net, self.unwind_abort_place)
                         .expect("panic handling error");
-                    //error!("skipped {}", function.describe_as_module(self.tcx));
                 }
             }
 
@@ -373,11 +480,7 @@ impl<'tcx> Visitor<'tcx> for Translator<'tcx> {
             DropAndReplace { .. } => panic!("DropAndReplace"),
             Resume => {
                 function!(self)
-                    .resume(
-                        net,
-                        self.unwind_abort_place,
-                        self.program_end_place.expect("missing program end place"),
-                    )
+                    .resume(net, self.unwind_abort_place)
                     .expect("resume failed");
             }
             Abort => function!(self)

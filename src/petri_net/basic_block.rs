@@ -188,6 +188,10 @@ impl Statement {
                     add_node_to_statement(net, op_place, self.stmt_transition)?;
                 }
             }
+            Rvalue::AddressOf(_, place) => {
+                let place_local = place_to_data_node(place, virt_memory);
+                add_node_to_statement(net, place_local, self.stmt_transition)?;
+            }
         }
         Ok(())
     }

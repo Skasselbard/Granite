@@ -9,31 +9,36 @@ extern crate log;
 #[macro_use]
 extern crate rustc;
 extern crate rustc_driver;
+extern crate rustc_hir;
 extern crate rustc_index;
 extern crate rustc_interface;
 extern crate rustc_mir;
 
 mod init;
-mod intrinsics;
 mod petri_net;
 mod translator;
 
 use crate::translator::Translator;
 use clap::{Arg, ArgMatches};
-use rustc::hir::def_id::LOCAL_CRATE;
 use rustc_driver::Compilation;
+use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_interface::interface;
+use rustc_interface::Queries;
 
 struct PetriConfig<'a> {
     arguments: ArgMatches<'a>,
 }
 
 impl<'a> rustc_driver::Callbacks for PetriConfig<'a> {
-    fn after_analysis(&mut self, compiler: &interface::Compiler) -> Compilation {
+    fn after_analysis<'tcx>(
+        &mut self,
+        compiler: &interface::Compiler,
+        queries: &'tcx Queries<'tcx>,
+    ) -> Compilation {
         init::init_late_loggers();
         compiler.session().abort_if_errors();
 
-        compiler.global_ctxt().unwrap().peek_mut().enter(|tcx| {
+        queries.global_ctxt().unwrap().peek_mut().enter(|tcx| {
             let (entry_def_id, _) = tcx.entry_fn(LOCAL_CRATE).expect("no main function found!");
             let mir_dump = match self.arguments.values_of("mir_dump") {
                 Some(path) => Some(out_file("mir")),

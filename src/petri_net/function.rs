@@ -1,7 +1,7 @@
-use crate::intrinsics::*;
-use crate::petri_net::basic_block::BasicBlock;
+use super::basic_block::BasicBlock;
+use super::intrinsics::generic_foreign;
+use super::unique_functions::MutexList;
 use petri_to_star::{NodeRef, PetriNet, PlaceRef, Result};
-use rustc::hir::def_id::DefId;
 use rustc::mir;
 use rustc_index::vec::IndexVec;
 use std::collections::HashMap;
@@ -60,7 +60,7 @@ pub struct VirtualMemory {
 #[derive(Debug)]
 pub struct Function<'mir> {
     pub name: String,
-    pub mir_body: &'mir mir::Body<'mir>,
+    pub mir_body: &'mir mir::BodyAndCache<'mir>,
     basic_blocks: HashMap<mir::BasicBlock, BasicBlock>,
     virt_memory: VirtualMemory,
     pub active_block: Option<mir::BasicBlock>,
@@ -75,7 +75,7 @@ pub enum Data {
     Constant(NodeRef),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct Local {
     pub(crate) prenatal_place: Option<NodeRef>, // function arguments can be constant
     pub(crate) live_place: NodeRef,
@@ -153,7 +153,7 @@ impl VirtualMemory {
 impl<'mir> Function<'mir> {
     pub fn new<'net>(
         name: String,
-        mir_body: &'mir mir::Body<'mir>,
+        mir_body: &'mir mir::BodyAndCache<'mir>,
         net: &'net mut PetriNet,
         mut args: Vec<Local>, // data that is used from the previous stack frame
         data_return: Local,   // node which stores the return value
@@ -161,6 +161,8 @@ impl<'mir> Function<'mir> {
         constant_memory: &Data,
         static_memory: &HashMap<mir::Promoted, Data>,
         return_flow: NodeRef, // where to continue after the call
+        mutex_list: &mut MutexList,
+        tcx: rustc::ty::TyCtxt<'mir>,
     ) -> Result<Self> {
         let mut function = Function {
             name,
@@ -179,7 +181,7 @@ impl<'mir> Function<'mir> {
         // add the locals but remember the locals from the previous stack frame
         // index zero is the return local followed by the function arguments
         args.insert(0, data_return);
-        function.add_locals(net, &function.mir_body.local_decls, args)?;
+        function.add_locals(net, &function.mir_body.local_decls, args, mutex_list, tcx)?;
         Ok(function)
     }
 
@@ -244,19 +246,13 @@ impl<'mir> Function<'mir> {
         Ok(())
     }
 
-    pub fn resume<'net>(
-        &mut self,
-        net: &'net mut PetriNet,
-        unwind_place: NodeRef,
-        program_end_place: NodeRef,
-    ) -> Result<()> {
+    pub fn resume<'net>(&mut self, net: &'net mut PetriNet, unwind_place: NodeRef) -> Result<()> {
         // TODO: make the unwind and resume semantic clear
         let source_place = active_block!(self).end_place();
         let t = net.add_transition();
         t.name(net, "unwind".into())?;
         net.add_arc(source_place, t)?;
         net.add_arc(t, unwind_place)?;
-        net.add_arc(t, program_end_place)?;
         Ok(())
     }
 
@@ -353,7 +349,7 @@ impl<'mir> Function<'mir> {
                 | name.contains("std::intrinsics::atomic_load")
                 | name.contains("std::intrinsics::transmute") =>
                 {
-                    generic_foreign(net, &arg_nodes, source, node, block, cleanup)?
+                    generic_foreign(net, &arg_nodes, source, node, block, cleanup, name.into())?
                 }
                 name if name.contains("libc::unix::pthread_mutexattr_init")
                     | name.contains("libc::unix::pthread_mutex_init")
@@ -362,14 +358,22 @@ impl<'mir> Function<'mir> {
                     | name.contains("libc::unix::pthread_mutex_lock") =>
                 {
                     warn!("mutex intrinsic {}", name);
-                    generic_foreign(net, &arg_nodes, source, node, block, cleanup)?
+                    generic_foreign(net, &arg_nodes, source, node, block, cleanup, name.into())?
                 }
                 _ => {
                     warn!(
                         "unchecked intrinsic: {} args:{:?} dest:{:?}, cleanup:{:?}",
                         intrinsic_name, args, destination, cleanup
                     );
-                    generic_foreign(net, &arg_nodes, source, node, block, cleanup)?
+                    generic_foreign(
+                        net,
+                        &arg_nodes,
+                        source,
+                        node,
+                        block,
+                        cleanup,
+                        intrinsic_name.into(),
+                    )?
                 }
             }
         } else {
@@ -459,6 +463,8 @@ impl<'mir> Function<'mir> {
         net: &'net mut PetriNet,
         locals: &IndexVec<mir::Local, mir::LocalDecl<'tcx>>,
         known_locals: Vec<Local>,
+        mutex_list: &mut MutexList,
+        tcx: rustc::ty::TyCtxt<'tcx>,
     ) -> Result<()> {
         // a lot of locals here:
         // mir_local: mir::Local => index for local decls in mir data structure
@@ -474,6 +480,23 @@ impl<'mir> Function<'mir> {
             self.virt_memory
                 .locals
                 .insert(mir_local, Data::Local(local));
+
+            // check if its a mutex for deadlock detection
+            let mut type_walk = decl.ty.walk();
+            if type_walk.next().unwrap().sort_string(tcx) == "struct `std::sync::Mutex`" {
+                let mut is_generic = false;
+                for ty in type_walk {
+                    if ty.sort_string(tcx) == "type parameter `T`" {
+                        is_generic = true;
+                        break;
+                    }
+                }
+                if !is_generic {
+                    let mutex = mutex_list.add(net)?;
+                    debug!("link '{:?}' to mutex '{:?}'", mir_local, mutex);
+                    mutex_list.link(local, mutex);
+                }
+            }
         }
         Ok(())
     }
@@ -486,6 +509,33 @@ impl<'mir> Function<'mir> {
         match self.virt_memory.get_static(statik) {
             Some(node) => Some(Local::new_constant(node)),
             None => None,
+        }
+    }
+
+    pub fn op_to_local(&self, operand: &mir::Operand<'_>) -> Local {
+        match operand {
+            mir::Operand::Copy(place) | mir::Operand::Move(place) => self.place_to_local(place),
+            mir::Operand::Constant(_) => {
+                let constant = match self.constants() {
+                    Data::Constant(constant) => *constant,
+                    _ => panic!("Non constant stored in constant space"),
+                };
+                Local::new_constant(constant)
+            }
+        }
+    }
+    pub fn place_to_local(&self, place: &mir::Place<'_>) -> Local {
+        match place.local_or_deref_local() {
+            Some(local) => *self.get_local(&local).expect("local not found"),
+            None => match &place.base {
+                mir::PlaceBase::Local(local) => *self.get_local(local).expect("local not found"),
+                mir::PlaceBase::Static(statik) => match statik.kind {
+                    mir::StaticKind::Static => panic!("staticKind::Static -> cannot convert"),
+                    mir::StaticKind::Promoted(promoted, _) => self
+                        .get_promoted(&promoted)
+                        .expect("promoted statik not found"),
+                },
+            },
         }
     }
 }
