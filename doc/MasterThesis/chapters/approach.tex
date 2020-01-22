@@ -2,17 +2,19 @@
 
 
 \chapter{Approach}
-short outline\\
-rust program -> compiler interception -> translation to petri net (formalism) -> verification with external tool
-\begin{verbatim}
-  - concrete approach of verification
-  - typical: language -> formalism
-  - petri nets
-  - tools -> LoLa
-\end{verbatim}
+After we learned the underlying concepts, we can go on with the actual task.
+
+In this chapter it is shown how the initial rust code is translated and analysed.
+We will see that the rust compiler has interfaces that we can use to reduce our effort,
+and that it creates an intermediate representation that fits our needs nicely.
+We will work out a translation for the elements of this intermediate representation, 
+and discuss the format that we will translate into.
+Finally we will discuss how we can use a model checker to find deadlocks in some simple test programs.
+%TODO: überleitungssatz?
 
 \section{Rust Compiler}
 \label{app_rust}
+
 \begin{verbatim}
 - what is a compiler
 - where can rustc be found
