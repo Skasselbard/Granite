@@ -1,19 +1,33 @@
 % !TEX root = ../main.tex
 \chapter{Background and related work}
+%TODO: intro
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\cite{klabnik2018rust}
 \section{Rust}
 \label{rel_rust}
 \begin{verbatim}
-- rust empowers bla bla \cite{}
-- low level with high level abstractions
-- small runtime
-- no garbage collection
-- controlled memory access
+- ~70% of the vulnerabilities Microsoft assigns a CVE each year 
+  continue to be memory safety issues
+  \cite{gavin2019secureCode}\cite{miller2019trends}
+- rust = fast and safe
+- rust empowers bla bla \cite{rustSite}
+- designed to support concurrency and parallelism\cite{Matsakis:2014:RL:2692956.2663188}
+- low level with high level zero cost abstractions\cite[Introduction]{klabnik2018rust}
+- small runtime\cite[Chapter 16.1]{klabnik2018rust}
+- no garbage collection\cite[Chapter 4]{klabnik2018rust}
+- instead ownership model\cite{Matsakis:2014:RL:2692956.2663188}
+  - controlled memory access
+    - ownership
+      - owner of object is unique
+      - ownership can be handed over
+      - references to/into object can be borrowed
+        - if borrow goes out of scope -> no references remain
+          -> no dangling pointers
+        - arbitrary amount of immutable borrowed references
+        - or at most one active mutable borrowed reference
+  - no dangling pointers, double frees, data races\cite{Matsakis:2014:RL:2692956.2663188}
+  - fast vs safe vs compile time effort \cite{speedSafety}
   - reduced expressiveness in exchange for increased memory safety
-  - features to tackle memory safety issues
-  - borrow checker
-  - no data races etc
-- fast vs safe vs compile time effort \cite{}
-- deadlocks are considered safe in rust terms \cite{}
+- deadlocks are considered safe in rust terms \cite[Chapter 8.1]{nomicon}
 \end{verbatim}
 
 \section{Compilers}
