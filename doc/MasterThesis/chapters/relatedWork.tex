@@ -4,31 +4,33 @@
 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\cite{klabnik2018rust}
 \section{Rust}
 \label{rel_rust}
-\begin{verbatim}
-- ~70% of the vulnerabilities Microsoft assigns a CVE each year 
-  continue to be memory safety issues
-  \cite{gavin2019secureCode}\cite{miller2019trends}
-- rust = fast and safe
-- rust empowers bla bla \cite{rustSite}
-- designed to support concurrency and parallelism\cite{Matsakis:2014:RL:2692956.2663188}
-- low level with high level zero cost abstractions\cite[Introduction]{klabnik2018rust}
-- small runtime\cite[Chapter 16.1]{klabnik2018rust}
-- no garbage collection\cite[Chapter 4]{klabnik2018rust}
-- instead ownership model\cite{Matsakis:2014:RL:2692956.2663188}
-  - controlled memory access
-    - ownership
-      - owner of object is unique
-      - ownership can be handed over
-      - references to/into object can be borrowed
-        - if borrow goes out of scope -> no references remain
-          -> no dangling pointers
-        - arbitrary amount of immutable borrowed references
-        - or at most one active mutable borrowed reference
-  - no dangling pointers, double frees, data races\cite{Matsakis:2014:RL:2692956.2663188}
-  - fast vs safe vs compile time effort \cite{speedSafety}
-  - reduced expressiveness in exchange for increased memory safety
-- deadlocks are considered safe in rust terms \cite[Chapter 8.1]{nomicon}
-\end{verbatim}
+Typically programming languages can be divided into fast or safe: 
+To increase software speed, developers have to optimize specific system details.
+This micro management easily leads to mistakes as it is hard to keep track of the complexity of the whole system.
+Mistakes that can be avoided with safety features like garbage collection -- compromising execution speed.
+
+The Rust project is an attempt to build a language that is both: fast and safe, 
+as the official slogan indicates: ``A language empowering everyone
+to build reliable and efficient software.''\cite{rustSite}.
+%Among Rusts design considerations were memory safety, concurrency and parallelism\cite{Matsakis:2014:RL:2692956.2663188}.
+To ensure a minimal performance overhead Rusts runtime was kept small\cite[Chapter 16.1]{klabnik2018rust} and features like garbage collection where neglected\cite[Chapter 4]{klabnik2018rust}.
+Instead, safety issues are addressed with Rusts \textbf{ownership model}\cite{Matsakis:2014:RL:2692956.2663188}.
+
+In Rust, a memory resource (object) is associated by one unique owning variable.
+The owner can mutate the object, reference it or hand over ownership.
+By handing over ownership it is lost for the previous owner, to unsure unique ownership.
+However, references can be `borrowed' in two flavors without loosing ownership:
+\begin{enumerate}
+  \item There can be an arbitrary amount of \textbf{immutable references} at a given time.
+  \item But only one active \textbf{mutable reference}. 
+  No immutable references can be active at the same time and the owner is prohibited from mutating.
+\end{enumerate}
+References that go out of scope are ensured to be deconstructed by Rusts \textbf{borrow checker}. Programs that don't meet the ownership requirements will not compile and raise an appropriate error message.
+
+By enforcing the ownership rules, Rust programs avoid common problems like dangling pointers, double frees and data races\cite{Matsakis:2014:RL:2692956.2663188} with no impact on execution speed.
+The cost is transferred to compile time, where additional errors complicate development and established programing patterns have to be revised.
+And while eliminating all these errors can be invaluable, Rust cannot prevent all mistakes.
+One of which are deadlocks\cite[Chapter 8.1]{nomicon} which we want to address with this work.
 
 \section{Compilers}
 The goal of this work is to combine the benefits of the Rust ownership system with the benefits of Petri-Net model checking.
