@@ -32,6 +32,8 @@ The cost is transferred to compile time, where additional errors complicate deve
 And while eliminating all these errors can be invaluable, Rust cannot prevent all mistakes.
 One of which are deadlocks\cite[Chapter 8.1]{nomicon} which we want to address with this work.
 
+[Überleitung]
+
 \section{Compilers}
 The goal of this work is to combine the benefits of the Rust ownership system with the benefits of Petri-Net model checking.
 
@@ -93,25 +95,113 @@ In the end however, we have a mapping from the source representation to the targ
   - rust and deadlocks -> considered safe code
 \end{verbatim}
 
-\section{Model Checking}
+\section{Verification}
 \label{rel_mc}
-\begin{verbatim}
-- tests vs Model Checking
-  - tests 
-    - only work for specific cases\cite{}
-    - done by program execution
-  - Model Checking 
-    - works in the general case\cite{}
-    - done by program analysis
-- different approaches (BDDs etc.)
-- petri nets!!
-\end{verbatim}
+Every software engineer who worked on reasonable complex systems probably admits that initial software versions are full of inconsistencies and bugs.
+To achieve resilient and correct software a detailed understanding of the system and careful reviews of the implementation is needed.
+If this process is done systematically it is called verification.
+
+To verify that software operates correctly it is required to know what `correct' means.
+Correctness is no intrinsic property of a system;
+It has to be defined in its context.
+For this, a description of the system -- a \textbf{specification} is required, to infer the \textbf{properties} it should fulfill.
+\% example for specification and properties \%
+A \textbf{system is correct} if its specification satisfies all its properties\cite[Chapter 1]{baier2008principles}.
+
+Among important approaches to verify software are code reviews and testing.
+Both techniques are valuable to find different kinds of errors.
+But in this work we will focus on \textbf{Model Checking}, an approach to search the complete state space of a system.
+
+\subsection{Model Checking}
+Model checking tries to solve the ambitious problem to check a property for every possible system configuration.
+To do that, the behavior of a system needs to be represented in a (name giving) model
+and separately the properties that the system needs to fulfill;
+Typically in a formal logic.
+Having both, all possible relevant model states are explored to verify that the given properties hold in that state.
+Unfortunately the the amount of states is typically exponential in the system size;
+A phenomenon that is known as the \textbf{state explosion problem}\cite[Introduction]{mcmillan1993symbolic}.
+This is the most outstanding problem of model checking, but it would be less used if there where no way to weaken the explosions impact.
+Some of the major techniques are symbolic model checking, partial order reduction and abstraction refinement\cite[Chapter 5]{clarke2011model}.
+However, the important information here is that model checking can tackle systems with a realistic amount of states.
+
+What is more important to know is the model formalism we want to use in this work and how we will describe our properties; Namely Petri-Nets and CTL*.
+
+% \begin{verbatim}
+% - tests vs Model Checking
+%   - tests 
+%     - only work for specific cases\cite{}
+%     - done by program execution
+%     "Testingcan thus never be complete. That is to say, testing can only show the presence of errors,not their absence"\cite{baier2008principles}
+%   - Model Checking
+%     - needs formal specification (model) -> already discovers problems
+%     - specified properties to check
+%     -> satisfied or counterexample (figure)
+%     - works in the general case\cite{}
+%       - by exhaustiv search of state space
+%     - state explosion problem
+%       - tackled with por symmetry etc.
+%     - done by program analysis
+% - different approaches (BDDs etc.)
+% - petri nets!!
+% "The different characterizations of verification (“are we building the thing right?”)
+% and validation(“are we building the right thing?”) originate from Boehm" [52]
+% \end{verbatim}
 
 \subsection{Petri-Nets}
 \label{rel_petri}
-\begin{verbatim}
-- 
-\end{verbatim}
+Petri-Nets where developed in the mid 1900's by Carl Adam Petri\cite{petri1962kommunikation}.
+It is a formalism that is well suited to model concurrent behavior, since it does not model each state explicitly.
+
+Petri-Nets are a bipartite directed graph.
+That means that a Petri-Net has two kinds of nodes where one kind is always connected to the other but never with itself.
+One type of nodes are \textbf{places}, that can hold an arbitrary amount of \textbf{tokens}.
+In low level petri nets these tokens do not carry any information; 
+Only the amount of tokens on each place determines the system state.
+The other node type are \textbf{transitions}.
+A transition is \textbf{enabled} when places that are connected with an incoming edge (from place to transition) have at least as many tokens as the corresponding edges \textbf{weight};
+I.e. A place that is connected through an edge with weight three needs at least three tokens.
+A transition without incoming edges is always enabled.
+Enabled transitions can \textbf{fire}.
+A firing transition \textbf{consumes} tokens corresponding to the edge weight from places connected with incoming edges -- the transition \textbf{preset} -- and \textbf{produces} tokens corresponding to the edge weight on places with outgoing edges -- the transition \textbf{postset}.
+If the postset is empty (no outgoing edges) no tokens are produced but the transition can still fire.
+Which enabled transition fires next is nondeterministic, so they fire randomly.
+
+Formally that means a Petri-Net is a five-tuple (P, T, F, W, $m_0$) with
+\begin{itemize}
+  \setlength\itemsep{-0.3em}
+  \item the set of places P,
+  \item the set of transitions T,
+  \item the set of edges F with $F \subseteq (P \times T) \cup (T \times P)$,
+  \item the edge weights $W: F \rightarrow \mathbb{Z} $
+  \item and an initial marking $m_0: P \rightarrow \mathbb{Z} $
+\end{itemize}
+Other important definitions are:
+\begin{itemize}
+  \setlength\itemsep{-0.3em}
+  \item a marking $M$ maps all places $\in$ P to a number of tokens $M: P \rightarrow \mathbb{Z}$
+  \item the preset of a transition $t \in T$ is: $\bullet t = \{p \in P | (p,t) \in F\}$
+  \item the postset of a transition $t \in T$ is: $t\bullet = \{p \in P | (t,p) \in F\}$
+  \item the preset of a place $p \in P$ is: $\bullet p = \{t \in T | (t,p) \in F\}$
+  \item the postset of a place $p \in P$ is: $p\bullet = \{t \in T | (p,t) \in F\}$
+  \item a transition $t \in T$ is enabled if $\forall (p,t) \in \bullet t: M(p) \geq W(p,t)$
+\end{itemize}
+!!!\\
+examples\\
+!!!
+
+Where is a large formal background to Petri-Nets that makes it possible to check for a variety of properties.
+For example it can be analysed if a particular marking can be reached from an initial marking or how many tokens a place may hold.
+And -- important for this work -- if the net can reach a \textbf{dead} state, where no transition can fire anymore.
+This state is equivalent to a deadlock.
+Another nice feature of Petri-Net-Models is that, if a state is found where a property is satisfied, it is typically possible to find a witness path from the initial marking.
+
+A downside of the formalism is the difficulty to model data.
+This can be addressed with several additions that lead to \textbf{high level Petri-Nets}, where tokens are associated with additional properties that can represent data.
+Transition in high level Petri-Nets can also respect the data of tokens in their firing behavior.
+However, these additions to the formalism weaken the statements that can be derived from it, limiting the properties that can be checked for.
+
+
+
 
 \subsection{CTL*}
 \label{rel_ctl}
