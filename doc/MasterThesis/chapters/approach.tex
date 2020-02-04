@@ -14,26 +14,44 @@ Finally we will discuss how we can use a model checker to find deadlocks in some
 
 \section{Rust Compiler}
 \label{app_rust}
+There are basically two options to translate rust into Petri-Nets:
+\begin{enumerate}
+    \item write an own translator or,
+    \item use something existing.
+\end{enumerate}
+Writing an own translator means total control over the process.
+Features can be added iteratively as needed and data structures can be designed efficiently for this special perpose.
+However, this would result in a new compiler for rust which eventually has to cover every language feature;
+Including some difficult ones like macro expansion and generics.
+Features that someone already implemented, spending a fair amount of thought in the process;
+Backed by a large community;
+Over several years.
+Resulting in a compiler that is openly available under an open source license\cite{rustc}, with a maintained documentation\cite{rustc-guide}\cite{rustc-doc}.
+And even though learning how this complex compiler works, and where to find the relevant parts for this project is also difficult, it seems to be time worth spend if we are able to skip learning and implementing difficult features.
+For this reason this project is based on the rust compiler `rustc'.
+So lets see how its basic structure looks like.
 
-\begin{verbatim}
-- what is a compiler
-- where can rustc be found
-- other rustc information
-    - maintaining structure
-    - development process
-    - release strategie
-    - main releases
-    - cargo integration
-
-- steps
-    - Parsing input 
-    - Name resolution, macro expansion, and configuration
-    - Lowering to HIR
-    - Type-checking and subsequent analyses
-    - Lowering to MIR and post-processing
-    - Translation to LLVM and LLVM optimizations
-    - Linking
-\end{verbatim}
+The rust compiler does have several phases and a variety of intermediate representations \cite[Chapter 2.1]{rustc-guide}:
+\begin{enumerate}
+    \item In the first phase rust source files are parsed to an abstract syntax tree (\textbf{AST}) that matches the original syntax closely.
+    \item In the second phase implicit information is expanded. This includes for example macros and identifier names.
+    \item Phase three lowers the AST to a simpler form called high-level intermediate representation or \textbf{HIR}.
+    The HIR still is quite similar to normal rust syntax but some structures are normalised so that code analysis is easier. 
+    For example for loops are rewritten to simple endless loops with break conditions.
+    \item The fourth phase executes some static analysis on the HIR.
+    Things like type checking and encapsulation verification is done on this representation.
+    \item Another representation is generated in phase five: the mid-level intermediate representation (\textbf{MIR}).
+    Now we leaving the tree structure and switching to a graph.
+    MIR is based on a control-flow graph \cite{} and language features are reduced to a minimum.
+    There is only one type of loop and branches respectively (only gotos instead of ifs or pattern matching).
+    Additional static analysis is done on the mir level,
+    like rusts borrow checking, as well as further optimization.
+    \item Phase six lowers the MIR to the rust independant LLVM\cite{} intermediate representation.
+    LLVM IR is a low level representation that is close to assembly language.
+    Optimization for this representation can now be done for the code resulting in several object files.
+    \item In the last phase the object files are linked into a complete binary executable.
+\end{enumerate}
+But wich phase is best to intercept to translate the current intermediate representation into petri nets?
 
 \section{Interception strategie}
 \label{app_intercept}
