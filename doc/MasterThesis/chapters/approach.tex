@@ -55,21 +55,39 @@ But wich phase is best to intercept to translate the current intermediate repres
 
 \section{Interception strategie}
 \label{app_intercept}
-\begin{verbatim}
-- try to use as many language features as possible
-- with least possible effort
-- after name resolution
-- after code generation
-    - avoids complicated language features
-- after borrow checking
-    - increases the assumptions we can make
-    - reduces cases we have to consider
-- after static optimization
-    - constant propagation
-- before loosing rust features
-- before being machine dependent
--> seemingly best solution: mir
-\end{verbatim}
+After deciding to use the rust compiler as basis for this work, we need to determine the phase we want to intercept the default compilation to translate to our own target.
+A suitable location makes use of the most possible compiler features with the least amount of translation effort.
+
+We want to skip basic features like name resolution as we need this feature ourselfs and surely won't improve it by a reimplementation.
+Also code generation, including macro and generics expansion, should be handled by the compiler.
+They just produce more rust code that we will treat anyway.
+But after expansion, no code generation syntax will remain and we can simply ignore this feature.
+
+More optional for our use are the static analysis features like type checking and borrow checking.
+Though, we want to use their assumption, we do not depend on them actually being checked, since nobody will ever run a rust program that did not go through the complete compilation process.
+So it is quite safe to assume that nobody will do model checking on a program that won't compile.
+However, we still can enforce those invariants if we run the static analisis anyway and abort on errors.
+This prevents time consuming runs for programs that cannot be build.
+
+A compiler feature that \textit{can} greatly ease our effort is the lowering of the representation.
+After all that means that several high level language features are reduced to less low level features.
+Which in turn means less features we have to cover with our implementation.
+We don't want to go to low though, since lower representations might prevent us from exploiting assumptions that are hidden in the translation process.
+We also probably want to avoid a machine dependant representation.
+To verify generic rust programs and not the peculiarities of a single machine.
+This might be debateable though.
+
+Lastly we want to make use of all optimizations we can.
+Especially optimizations that reduce the code (and resulting net) size.
+So features like constant propagation and dead code elimination would be nice to have to reduce the limit of state explosion.
+At least a little bit.
+
+Looking back an the rust compiler phases with those thoughts in mind, the seemingly best place we can intercept is between phase five and six.
+After borrow checking and optimizations on the MIR.
+Here, all code was expended, all rust specific static analisis and optimization was done and all unnecessary language features where reduced to a minimal set of instructions.
+And since MIR is a graph representation as well as petri nets, a mapping should be relatively straight forward.
+More so if we consider that MIR represents control flow quite closely as petri nets do.
+Also we avoid the still lower level and rust independent LLVM IR and the machine dependent object files. 
 
 \section{Mid-level Intermediate Representation (MIR)}
 \label{app_mir}
