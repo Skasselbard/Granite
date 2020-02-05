@@ -91,14 +91,38 @@ Also we avoid the still lower level and rust independent LLVM IR and the machine
 
 \section{Mid-level Intermediate Representation (MIR)}
 \label{app_mir}
-\begin{verbatim}
-- control flow graph
+%TODO: examples examples examples
 
-other stuff from rustc book
+Now where we pinned down MIR as the intermediate representation to use, it is helpful to understand how it is structured.
 
-      - how to traverse
-      - single elements
-\end{verbatim}
+As mentioned before, MIR is derived from control flow graphs\cite[chapter 2.17]{rustc-guide}.
+It consists of several \textbf{basic blocks} which are interconnected with directed edges.
+Each basic block consist of any amount of non branching \textbf{statements} and a single -- possibly branching -- \textbf{terminator}.
+All statements in a single basic block are executed sequentially.
+Between those, no branching can occur in or out.
+Only terminators can redirect the control flow.
+They are the ones that represents conditional execution (i.e. if-then-else constructs) or jumps to other basic blocks (including loops).
+
+Data in MIR is represented as \textbf{locals} and \textbf{places} (not to be confused with petri-net places).
+Places represent any kind of memory location, whereas locations are conceptually located on the stack.
+This means that a location can also be represented as a place, but places are not necessarily locations.
+Statements work on these data representations.
+The most prominent type of statement is an assignment that assigns an \textbf{rvalue} derived from an expression to a memory location -- meaning a place.
+Also based on the data terminators can direct control flow.
+Which branch the program takes might depend on the value a place currently holds.
+
+It is also important to know that each function has a separate MIR representation.
+Calling other functions is an action done by a call-terminator.
+They can direct control flow to a subroutine that is executed until a return-terminator is hit.
+After that the calling function resumes execution at a previously defined basic block.
+An important note is that the functions in a call are referenced by name and not with an edge in the graph (this results in the separate MIR representation for each function).
+This approach ensures that recursive function calls are kept simple.
+
+Besides the specific kinds of statements and terminators, this is the general concept for the MIR graph.
+A more detailed view would be of little help since it would get very close to the actual implementation.
+Implementation details, however, are frequently changing;
+In fact during this work it changed multiple times breaking the code.
+A circumstance that is communicated by the compiler team and needed because a too stable API would restrain the compiler development process.
 
 \section{Petri Net Representation}
 \label{app_petri}
