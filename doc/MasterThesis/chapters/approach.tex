@@ -95,6 +95,18 @@ Also we avoid the still lower level and rust independent LLVM IR and the machine
 
 Now where we pinned down MIR as the intermediate representation to use, it is helpful to understand how it is structured.
 
+\begin{figure}
+    \centering
+    \includegraphics[width=.7\textwidth]{../diagrams/BasicBlock.png}
+    \caption{
+        Structure of a basic block. 
+        Several chained statements with a single trailing terminator.
+        The terminator can redirect control flow to other basic blocks.
+        In this example BB3 branches to BB4 or BB7 depending on the value of local8
+        }
+    \label{mir_bb}
+\end{figure}
+
 As mentioned before, MIR is derived from control flow graphs\cite[chapter 2.17]{rustc-guide}.
 It consists of several \textbf{basic blocks} which are interconnected with directed edges.
 Each basic block consist of any amount of non branching \textbf{statements} and a single -- possibly branching -- \textbf{terminator}.
@@ -103,6 +115,37 @@ Between those, no branching can occur in or out.
 Only terminators can redirect the control flow.
 They are the ones that represents conditional execution (i.e. if-then-else constructs) or jumps to other basic blocks (including loops).
 
+% \lstset{language=C++,caption={Basic implementation of a spinlock with compare and swap},label=CASIMPL, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+% \begin{lstlisting}
+% #include <atomic>
+
+% enum LOCK{
+%     LOCKED,
+%     UNLOCKED
+% };
+
+% static inline void waitAndLock(std::atomic<bool>* lock){
+%     bool expected = UNLOCKED;
+%     while (!lock->compare_exchange_weak(expected,LOCKED)){
+%         expected = UNLOCKED;
+%     }
+% }
+
+% static inline void waitForUnlock(std::atomic<bool>* lock){
+%     while (lock->load() != UNLOCKED){
+%         continue;
+%     }
+% }
+
+% static inline void lock(std::atomic<bool>* lock){
+%     lock->store(LOCKED);
+% }
+
+% static inline void unlock(std::atomic<bool>* lock){
+%     lock->store(UNLOCKED);
+% }
+% \end{lstlisting}
+
 Data in MIR is represented as \textbf{locals} and \textbf{places} (not to be confused with petri-net places).
 Places represent any kind of memory location, whereas locations are conceptually located on the stack.
 This means that a location can also be represented as a place, but places are not necessarily locations.
@@ -110,6 +153,21 @@ Statements work on these data representations.
 The most prominent type of statement is an assignment that assigns an \textbf{rvalue} derived from an expression to a memory location -- meaning a place.
 Also based on the data terminators can direct control flow.
 Which branch the program takes might depend on the value a place currently holds.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.7\textwidth]{../diagrams/Function.png}
+    \caption{
+        Example of a functions internal control flow.
+        The statements of the basic blocks are omitted as they don't affect control flow.
+        A function has a list of locals that are accessible on the stack.
+        Each local has an associated type.
+        Functions always start with the first basic block (BB0 in this case).
+        This function either returns to the calling function in BB2
+        or calls `funtion2' in BB3.
+        When function2 returns, control flow continues in BB1.}
+    \label{mir_fn}
+\end{figure}
 
 It is also important to know that each function has a separate MIR representation.
 Calling other functions is an action done by a call-terminator.
@@ -124,34 +182,117 @@ Implementation details, however, are frequently changing;
 In fact during this work it changed multiple times breaking the code.
 A circumstance that is communicated by the compiler team and needed because a too stable API would restrain the compiler development process.
 
-\section{Petri Net Representation}
-\label{app_petri}
-\begin{verbatim}
-    - petri net formalism and format (high level? edge descriptions)
-\end{verbatim}
 
 \section{Translation}
 \label{app_trans}
+After we saw how the MIR graph is structured, we can try to find a translation to Petri-Nets. This will include some more details and edge case we have to consider.
+
+\subsection{Entry Point}
+The will start with the most abstract view on our translation: the whole program.
+A program is something that typically has a beginning end an ending.
+We can model this with a \textbf{program start} and an \textbf{program end} place that every program has.
+Depending on the program they are interconnected somehow.
+The sole exception are programs with a diverging main function -- where the main function ends in an endless loop.
+In this case start und end place will not be connected, but an unconnected end place does not harm either.
+In rust a second end place for panics -- the \textbf{panic end} place -- is a helpful addition.
+This place will be marked then the program terminated unsuccessfully after a panic was raised.
+A circumstance that might be helpful to distinguishing in verification runs.
+Finally the program start place needs to be marked with a token.
+We will later see that this token also indicates the first statement to execute and that it virtually moves from statement to statement acting like a program counter (even though petri net tokens do not move semantically but rather be consumed and produced).
+
+Although these are all the basic features shared by every program, we still have to look a little closer on the semantics of the program start place.
+This place is a bit ambiguous since, in practice, the main function is not wat is executed first.
+Usually programs have a `runtime' that is initialized before main() is called.
+These setup static memory and initialize language specific features, among other things.
+And even though low level languages like rust or c hove a small runtime, they still have one.
+Now we have to decide if this runtime should be considered for Petri-Net translation.
+After all it is part of the finally executed binary.
+On the other hand it is platform dependent code that is independant from the actual program semantics.
+And there is another problem in starting in the pre main code.
+It turns out that the MIR for that part is not completely available in every compiler version.
+It is possible to get the missing parts subsequently but it complicates the translation process unnecessarily.
+Additionally, we previously argued for a platform independent approach already in chapter \ref{app_intercept}.
+It would be inconsistent to detach from that agenda now.
+So, because of these reasons we decided to skip the pre main() code and start translating programs with the actual main method.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\textwidth]{../diagrams/basic_program.png}
+    \caption{
+        Stubs for programs and functions, and a minimal terminating program.
+        A program has a start and an end place.
+        The start place holds a token, as program execution begins there.
+        If a program terminates successfully the program end place is marked.
+        A termination caused by a panic marks only the panic place.\\
+        A function has a distinct starting place (it always starts at the first basic block).
+        But there is no end place, as functions can be left by any terminator.\\
+        The shortest possible (terminating) program has an empty main function.
+        Program start place and main function start place are one and the same place.
+        Empty functions have no basic block in MIR, so we have to add an artificial transition to leave the function.
+    }
+    \label{program_blocks_trans}
+\end{figure}
+
+\subsection{Functions}
+After we modeled the important features of a program, we can look on the next important path that a program consists of.
+Control flow wise these are functions.
+As in most other imperative languages rust programs have a main function that wrap all its functionality (excluding the runtime as discussed in the previous section).
+The main function can call other functions that inturn can call additional functions, and so on.
+When executing a program the called functions are organized on a stack called `call stack'.
+When a new function is entered a new stack frame is pushed on the stack including information like function arguments and local variables.
+On leaving a function it is removed or `poped' from the stack deallocating memory the frame occupied.
+
+In MIR calling and returning from functions is done in a basic block terminator and can occur arbitrarily often.
+Considering this behavior in a function model would be of no help, leaving just the start place as a feasible similarity between functions.
+A function that is called always begins its execution there.
+And it will always be identical to the start place of the first basic block.
+
+So, from a modeling perspective functions are not the decisive abstraction.
+But if we consider the translation process they get more important.
+The rustc interface for MIR works per function.
+This means that it is not possible (at least no obvious one) to get the MIR from a whole program but only from single functions.
+A likely explanation for this design choice is that a lot of context information switches with functions.
+For example every functions starts with basic block zero and increases the count for the following.
+Local variables are also indexed with some of them having a special meaning.
+The first being the functions return value followed by variables for all function arguments.
+If we want to translate a program we have to keep this structure in mind.
+In our implementation we have done this virtually by an own call stack.
+We traverse the program function by function.
+Every time we encounter a function call terminator we try to translate the called function and return wre we left if we are done.
+On the new call the context is switched to the new variables and basic blocks, and the return semantics is stored.
+
+However, this approach has some implications:
+\begin{enumerate}
+    \item If the same function is called multiple times in the program, it is also translated multiple times.
+    Although, this can probably avoided with an intelligent function cache this approach is sufficient for a proof of concept.
+    \item The far more extensive implication are the voided recursion capabilities.
+    If we encounter a recursive function with this strategie, we will be trapt in an endless loop.
+\end{enumerate}
+Actually recursion is a feature that can never be achieved with low-level Petri-Nets, as it data model cannot be mapped correctly.
+How often a recursive function is called depends on the data it is called with and cannot be known at compile time.
+In normal program execution functions are just pushed on a new stack frame until it is resolved (the base case is called for all recursive calls) or the stack overflows.
+Most relevant programs will be still executable.
+But we cannot model this stack like behavior in low-level Petri-Nets because we cannot get additional memory.
+All memory we have is that we know of at compile time.
+And we cannot reuse the places of a function for different recursion levels as we can not distinguish the tokens from the recursion levels.
+We could just remodel each recursion level again and again to a fixed recursion level.
+However, this would impact the verification results, since a property might change for programs with different maximum recursion depths.
+
+A solution to this problem can be high-level petri nets, where we can distinguish between tokens.
+There we could reuse places from the same function by annotating tokens with the corresponding recursion level.
+We won't go into detail of this approach, though, since this work is based on the low-level semantics.
+We will just have to accept that we cannot translate recursive functions for the time being.
+
+\subsection{Data}
+
 \begin{verbatim}
-- entry point
-    - using main
-    - ignoring pre main
-        - os specific
-        - independent from program semantics
-        - not all mir available
 - elements
-    - programm
-        - starts
-        - ends
     - memory
         - constants
         - statics
         - places
         - locals
     - function
-        - no translation memory (multiple calls = multiple translations)
-        - stack like structure
-        - no recursion possible with this approach
         - can panic
         - can diverge
         - can be empty (in theorie)
@@ -190,6 +331,25 @@ A circumstance that is communicated by the compiler team and needed because a to
     - joining basic blocks
     - joining function calls
     - recursion limits
+\end{verbatim}
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\textwidth]{../diagrams/basic_blocks.png}
+    \caption{
+        The structure of basic blocks and statements.
+        Basic blocks as well as statements have a distinct start and end place.
+        The start place of the first statement is identical with the basic block start place.
+        The same is true for the lasts statements end place and the basic block end.
+        Also the end place of a leading statement is the start place of the following statement (illustrating the sequential nature of statements).
+        Terminators are represented entirely by transitions that are not pictured here, as they are typically linking to other basic blocks.
+    }
+    \label{basic_block_trans}
+\end{figure}
+
+\section{Petri Net Representation}
+\label{app_petri}
+\begin{verbatim}
+    - petri net formalism and format (high level? edge descriptions)
 \end{verbatim}
 
 
