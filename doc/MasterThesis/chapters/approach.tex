@@ -240,7 +240,7 @@ As in most other imperative languages rust programs have a main function that wr
 The main function can call other functions that inturn can call additional functions, and so on.
 When executing a program the called functions are organized on a stack called `call stack'.
 When a new function is entered a new stack frame is pushed on the stack including information like function arguments and local variables.
-On leaving a function it is removed or `poped' from the stack deallocating memory the frame occupied.
+On leaving a function it is removed from the stack deallocating memory the frame occupied.
 
 In MIR calling and returning from functions is done in a basic block terminator and can occur arbitrarily often.
 Considering this behavior in a function model would be of no help, leaving just the start place as a feasible similarity between functions.
@@ -283,15 +283,78 @@ There we could reuse places from the same function by annotating tokens with the
 We won't go into detail of this approach, though, since this work is based on the low-level semantics.
 We will just have to accept that we cannot translate recursive functions for the time being.
 
-\subsection{Data}
+\subsection{Memory}
+To translate a rust program we cannot focus only on flow.
+We also need a valid representation of data.
+Unfortunately, as mentioned before, data is complicated to model in low-level petri nets.
+With only the concept of bare tokens, we can only model finite memory space and even if we do, modeling every state of every possible variable would bloat our net terribly.
+
+To stay in the realm of low-level nets we have need to abstract from variable states.
+In principle a Petri-Net place already is something that holds data: a set of tokens.
+If we interpret a place as a memory location and a token is data, though we loose a lot of information, however, we still can analyse the program flow.
+Additionally, this representation resonates well with a possible high-level extension where the token can be annotated with the current value of a variable.
+So, to keep it simple we represent a memory location as a single place with a single token.
+And we `read' from memory with a transition that consumes the token, while also producing a token.
+
+Now in many programing language there are different concepts of memory that behave differently, and rust is no exception.
+Basically we can distinguish between four different concepts:
+\begin{enumerate}
+    \item \textbf{Constant memory space}: The size of the constant space is known at compile time and the values of this space do not change during runtime (hence the name).
+    The values of all constants are compiled into the executable and no computation is needed to get them.
+    \item \textbf{Static memory space}: Like in the constant space, the size of the static memory space is known at compile time.
+    The big difference is that data the static space can change during runtime.
+    So during program startup, a fixed amount of memory is allocated and all static variables are initialized.
+    Later they can be used rather similar as normal variables. With some rust specific constrains that we will not discuss here, as they are not important for Petri-Net translation.
+    \item The \textbf{Stack}: there the size is known for each stack frame (function call).
+    This is the combined size of all local variables a function needs for execution.
+    If a function is called a now frame is pushed to the stack and if the function terminates the frame is removed.
+    Since the last pushed frame will be the first to be removed (LiFo - Last in, first out), the stack can be managed without data fragmentation.
+    \item The \textbf{Heap}: which is the place there every remaining memory goes.
+    A dynamic variable, there the size cannot be known at compile time needs to allocate memory on demand at runtime.
+    If the memory is not needed anymore, it will be deallocated and the again free space can be reused.
+    Since both allocation and deallocation are on demand, this can introduce memory fragmentation, since the size of the holes is not uniform.
+\end{enumerate}
+
+The most prominent concept on the MIR layer is the stack.
+Every part of the MIR is associated with a function which has a set of local variables (locals).
+The current state of a local variable is changed by statements.
+This includes the values the variable can be assigned to as well as information about variable liveness.
+Each local starts in an uninitialized state until a statement is called to set it `storage live'.
+A living variable can be assigned to arbitrary values (the type allows) as long as it is needed.
+Afterwards a statement sets the variable `storage dead' to indicate that it will not be used again in this function call.
+We can model this behavior with three Petri-Net places for each local: one place for the uninitialized state, one for the living state there the variable can be used and one for the dead state.
+The first active state will be `uninitialized' so this one must be marked with a token initially.
+The unique `storage live' and `storage dead' statements (which are special statements generated for the MIR) have to be called to traverse the three states.
+They will consume a token from the previous state and produce one on the next.
+This enforces that data access can only be done if a token is on the live place.
+This way we can later verify if the liveness invariants are met.
+
+Heap and static space is hidden behind local variables.
+For example we can access a value on the heap by dereferencing a pointer we stored in a local.
+In MIR this is done with a projection from a local that describes wich part of the local is used;
+Which field of a struct, which index of an array or if we dereference the local for example.
+This information is stored implicitly as MIR-place on which statements can operate.
+Unfortunately this projects is hard to impossible to model.
+Especially pointer dereferencing is a problem since the memory model is handled by the operating system at runtime.
+But for all these projections the source -- the initial local -- is known.
+If we use a projection in a statement we can interpret this as an access to the initial local.
+Again we loose some information here in exchange for a manageable design.
+
+What is much easier to model is the space for constant variables.
+They behavior is close to locals that live for the entire runtime.
+So they do not need any uninitialized or dead place, just a place that represents the current value.
+In fact we can model the whole constant space as a single Petri-Net place, where every access is done with different transitions.
+Where is no data manipulation anyway.
+And again this approch resonates well with a possible high-level petri net extension where every accessing transition produces token with the corresponding constant values.
+
+In conclusion we need two models for memory access: a a set of place for each local variable with uninitialized, live, and dead place, and a single place that represents the whole constant memory space.
+Memory is accessed and modified in statements and if we have to handle heap space we can hide this behind an access of a local variable which is projected to other memory space that we are unable to control (or model).
+Before take a deeper look on the memory using statements next we will see how we can model the basic blocks that contains the statements.
+
+\subsection{Basic Blocks}
 
 \begin{verbatim}
 - elements
-    - memory
-        - constants
-        - statics
-        - places
-        - locals
     - function
         - can panic
         - can diverge

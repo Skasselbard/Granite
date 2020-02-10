@@ -21,7 +21,11 @@
 \begin{verbatim}
 - track moved variables
     - refine the concept of locals and memory
-- high lvl nets
+- other abstraction level
+    - more complex: high lvl nets
+    - less complex: basic blocks as places
+        - statements currently do not influence the graph anyway
+        - maybe track data that is important for flow
 - map the source to the nodes similar to the mir approach
 - analyse complex programs
 \end{verbatim}
