@@ -164,7 +164,7 @@ Which branch the program takes might depend on the value a place currently holds
         Each local has an associated type.
         Functions always start with the first basic block (BB0 in this case).
         This function either returns to the calling function in BB2
-        or calls `funtion2' in BB3.
+        or calls `function2' in BB3.
         When function2 returns, control flow continues in BB1.}
     \label{mir_fn}
 \end{figure}
@@ -352,6 +352,90 @@ Memory is accessed and modified in statements and if we have to handle heap spac
 Before take a deeper look on the memory using statements next we will see how we can model the basic blocks that contains the statements.
 
 \subsection{Basic Blocks}
+A basic block does not have many features of its own.
+It is essentially a container for a sequential part of a program with an entry point and an exit point.
+On exit, program flow can be redirected to one or more other basic blocks (redirections to other functions will also start with a basic block).
+Consequently, in a Petri-Net model a basic block has an entry place and an exit place.
+These are bound to the containing statements, where the basic blocks entry place corresponds to the first statements entry place and the basic blocks exit place corresponds to the last statements exit place.
+The terminator is modeled by one or more transitions that are connected to the end place to another basic blocks start place.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\textwidth]{../diagrams/basic_blocks.png}
+    \caption{
+        The structure of basic blocks and statements.
+        Basic blocks as well as statements have a distinct start and end place.
+        The start place of the first statement is identical with the basic block start place.
+        The same is true for the lasts statements end place and the basic block end.
+        Also the end place of a leading statement is the start place of the following statement (illustrating the sequential nature of statements).
+        Terminators are represented entirely by transitions that are not pictured here, as they are typically linking to other basic blocks.
+    }
+    \label{basic_block_trans}
+\end{figure}
+
+\subsection{Statements}
+Statements are the part of the MIR that change data.
+There are several different kinds of statements;
+How many and how they are structured exactly may change over time.
+Additionally, some of them are not used in every compiler phase.
+For example a MIR statement named `FakeRead' is used for static analysis but removed in a later optimization phase when the sanity was satisfied.
+
+The general structure of the different statements, however, is rather similar.
+In Petri-Net terms, they have a starting place, a transition that manipulates some data places and an end place.
+If two statements succeed each other, the first transitions end place will be the seconds transition start place.
+Similarly, the start place of the first statement in a sequence will be shared with the start place of the surrounding basic block, and likewise are the end places of the basic block and the last statement shared.
+The statement transition will consume a token from the start place and produce a token on its end place.
+Additionally, the transition will consume and produce data places to resemble a manipulation of this data.
+As mentioned earlier the actual data is transparent in the low-level Petri-Net model but might be added in a high-level model.
+
+As an example for the data manipulation we can look at the three most important statements: `StorageLive', `StorageDead' and `Assign'.
+\begin{itemize}
+    \item The \textit{StorageLive} statement consumes a token from the \textit{uninitialized} place from a local variable and produces one on the \textit{live} place.
+    \item The \textit{StorageDead} statement consumes a token from the \textit{live} place from a local variable and produces one on the \textit{dead} place.
+    \item An \textit{Assign} statement in the language semantics, evaluates an expression and assigns the result to a memory location (lvalue).
+    In Petri-Net semantics it consumes a token from the lvalue live place and all live places that are involved in the expression, and immediately produces a new token on all of them.
+    This means that no assign statement can be executed until the corresponding locals are initialized with a storage live statement or after the local was retired with a storage dead statement.
+\end{itemize}
+
+With the virtual movement of a token from one statements start place to another we modeled a marking mechanism for the currently active instruction (meaning a statement or terminator).
+If we would simulate the resulting Petri-Net (except at program start and end) we always have a token on exactly one start place of a single instruction.
+This instruction will be the next one to be executed and afterwards a new instruction will be marked.
+This property is very close to a \textit{program counter} in CPU's which stores the address of the instruction that will be executed next.
+This next instruction might just increment the pointer (in sequential parts) to mark the subsequent instruction as active or manipulates the pointer to jump to a totally different instruction.
+
+But how jumps work in our Petri-Net model is part of our last structural element.
+
+\subsection{Terminators}
+After we covered the strict sequential part of our program we will now discuss the jumping and branching terminators.
+They too have a common structure:
+Every terminator has at least one transition which consumes a token from a basic block end place and produce a token on a basic blocks start place.
+
+The MIR representation again has different kinds of terminators with the most important ones being:
+\begin{itemize}
+    \item The must basic \textit{Goto} terminator has a single transition.
+    It connects two basic blocks inside of a single function.
+    \item The \textit{SwitchInt} terminator implements a conditional branch to multiple other basic blocks.
+    A branching path can only be taken if its condition is met.
+    However, the last path acts as an \textit{otherwise} branch that will be taken if there is no other valid path.
+    As the Petri-Net representation is used for model checking we always consider every possible branch.
+    As a result we can ignore the condition and just connect all basic blocks.
+    \item The \textit{Call} terminator connects basic blocks of different functions.
+    It also encodes function arguments and the basic block to continue after the called function returns.
+    We have to consider this information for the translation, especially the arguments.
+    We have to make sure that we reuse their locals in the called function.
+    Also function calls might panic and if they do execution continues on a separate basic block.
+    \item The \textit{Return} terminator is the return path from a successful function call.
+    Here the current basic block is connected with the one that encoded in the Call terminator.
+    \item The \textit{Resume} terminator is the return path from an unsuccessful function call.
+    This terminator is connected with the panic basic block that is encoded in the function call.
+    \item The \textit{Assert} terminator branches binary depending on a condition.
+    If the condition evaluates as expected normal execution flow continues and if it does not a panic is started onb a separate path.
+    Again, in the Petri-Net we always consider both cases and can safely ignore the condition and just model both paths with a transition.
+\end{itemize}
+We can see that terminators determine successful and unsuccessful execution causing panics which are a error handling mechanic of rust.
+This is an important part of program execution and demands a little closer look.
+
+\section{Panic Handling}
 
 \begin{verbatim}
 - elements
@@ -359,16 +443,6 @@ Before take a deeper look on the memory using statements next we will see how we
         - can panic
         - can diverge
         - can be empty (in theorie)
-    - basic blocks
-    - statement
-        - rvalues and operands
-        - assign
-        - etc
-    - terminator
-        - goto
-        - switch int
-        - call
-        - etc
 - panic handling
     - do not catch by other threads
     - distinguish between successful and unsuccessful termination
@@ -395,19 +469,6 @@ Before take a deeper look on the memory using statements next we will see how we
     - joining function calls
     - recursion limits
 \end{verbatim}
-\begin{figure}
-    \centering
-    \includegraphics[width=.9\textwidth]{../diagrams/basic_blocks.png}
-    \caption{
-        The structure of basic blocks and statements.
-        Basic blocks as well as statements have a distinct start and end place.
-        The start place of the first statement is identical with the basic block start place.
-        The same is true for the lasts statements end place and the basic block end.
-        Also the end place of a leading statement is the start place of the following statement (illustrating the sequential nature of statements).
-        Terminators are represented entirely by transitions that are not pictured here, as they are typically linking to other basic blocks.
-    }
-    \label{basic_block_trans}
-\end{figure}
 
 \section{Petri Net Representation}
 \label{app_petri}
