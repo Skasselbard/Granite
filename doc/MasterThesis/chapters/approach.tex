@@ -115,37 +115,6 @@ Between those, no branching can occur in or out.
 Only terminators can redirect the control flow.
 They are the ones that represents conditional execution (i.e. if-then-else constructs) or jumps to other basic blocks (including loops).
 
-% \lstset{language=C++,caption={Basic implementation of a spinlock with compare and swap},label=CASIMPL, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
-% \begin{lstlisting}
-% #include <atomic>
-
-% enum LOCK{
-%     LOCKED,
-%     UNLOCKED
-% };
-
-% static inline void waitAndLock(std::atomic<bool>* lock){
-%     bool expected = UNLOCKED;
-%     while (!lock->compare_exchange_weak(expected,LOCKED)){
-%         expected = UNLOCKED;
-%     }
-% }
-
-% static inline void waitForUnlock(std::atomic<bool>* lock){
-%     while (lock->load() != UNLOCKED){
-%         continue;
-%     }
-% }
-
-% static inline void lock(std::atomic<bool>* lock){
-%     lock->store(LOCKED);
-% }
-
-% static inline void unlock(std::atomic<bool>* lock){
-%     lock->store(UNLOCKED);
-% }
-% \end{lstlisting}
-
 Data in MIR is represented as \textbf{locals} and \textbf{places} (not to be confused with petri-net places).
 Places represent any kind of memory location, whereas locations are conceptually located on the stack.
 This means that a location can also be represented as a place, but places are not necessarily locations.
@@ -428,54 +397,185 @@ The MIR representation again has different kinds of terminators with the most im
     Here the current basic block is connected with the one that encoded in the Call terminator.
     \item The \textit{Resume} terminator is the return path from an unsuccessful function call.
     This terminator is connected with the panic basic block that is encoded in the function call.
-    \item The \textit{Assert} terminator branches binary depending on a condition.
-    If the condition evaluates as expected normal execution flow continues and if it does not a panic is started onb a separate path.
-    Again, in the Petri-Net we always consider both cases and can safely ignore the condition and just model both paths with a transition.
+    \item The \textit{Assert} terminator branches depending on a condition.
+    If the condition evaluates as expected -- normal execution flow continues, and if it does not -- a panic is started on a separate path.
+    Again, in the Petri-Net we always consider both cases so we can safely ignore the condition and just model both paths with a transition.
 \end{itemize}
 We can see that terminators determine successful and unsuccessful execution causing panics which are a error handling mechanic of rust.
 This is an important part of program execution and demands a little closer look.
 
 \section{Panic Handling}
+Error handling is a vital part in programming and typically is considered in program language design.
+Many languages implement an exception semantic with try and catch blocks.
+Exceptions can be thrown and if they are not catched the program terminates ungraceful.
+Rust has a different approach: normally functions are expected to not fail.
+Functions that can failed will return a \textit{Result} type that can be the result of the computation or an error with a description.
+The type system enforces handling of both cases and the language gives some mechanisms to do so.
+Of course the interesting part is the error case.
+This one can be escalated to previous function calls until a consistent program state can be restored.
+But it might not always be possible to recover from an error state.
+In such a situation the program can be instructed to \textit{panic} and shutting down ungracefully like with an uncatched exception in other languages.
+The programm execution is aborted, the stack will be unwinded and an error message with the details of the panic is generated (stating the error message and the location of the error).
+Though, panics can be catched by a parent thread they typically lead to the termination of the current program.
+This panic structure ensures that the compiler always knows when a panic can happen and generates appropriate code.
 
-\begin{verbatim}
-- elements
-    - function
-        - can panic
-        - can diverge
-        - can be empty (in theorie)
-- panic handling
-    - do not catch by other threads
-    - distinguish between successful and unsuccessful termination
-- which parts can or must be excluded from translation
-    - std implementations
-    - part between std::mutex and pthread mutex
-- emulating features
-    - missing mir parts
-    - external libraries
-    - intrinsics and platform specific behavior
-    - mutexes
-        - high level and low level interfaces
-        - choosing high level
-            - harder model checking for more general Mutexes
-            - os independent
-            - less elements need to be translated
-                - smaller net
-                - worse mapping
-        - need to track associated locals
+Code that we can identify and handle in the MIR representation.
+We hinted this in the last chapter: some terminators can branch execution to a normal path or a panic path.
+Branches to a panic path lead to basic blocks that are marked as cleanup and handle stack unwinding.
+If execution enters a cleanup path, it cannot return to a normal path and will end up in an erroneous termination (unless catched by a parent thread).
+We can model a separate termination place in our Petri-Net for this event.
+This way we can check for this property later.
+However, stack unwinding will execute generated code that is not a distinct part of the program semantic.
+After all, what really matters is that an erroneous state was reached that we can't recover.
+So we can reduce the size of our net by skipping the cleanup paths and directly put a mark on the panic place.
 
-- joining the translations
-    - joining basic elements
-    - joining basic blocks
-    - joining function calls
-    - recursion limits
-\end{verbatim}
+Of course the rust compiler cannot cast black magic to prevent the really bad errors like dereferencing pointers to unaccessible memory.
+Such a miscalculation would lead directly to an os exception (or other undefined behavior) causing an error that cannot be catched by rust or worse -- a messed up state with no error at all!
+And since rust cannot those errors, we cannot model them either.
+We just have to assume that all compiled operations are valid in the execution context.
+This kind of errors have to be avoided by the implementor.
+But rust aids avoidance by marking such operations and functions as \textit{unsafe} to use.
+Most of the time it is possible to avoid unsafe code using abstractions and safe operations.
+Only a small code base needs to use unsafe code to create those safe abstractions and once the integrity there is kept, all depending higher level code benefits.
+
+\section{Interface Emulation}
+There are endless possibilities to implement an algorithm and not all of them depend on rust as description language.
+Still, using established algorithms from other source languages is a desireable feature to have.
+Unsurprisingly, rust implements some interfaces to access functionality that is not native to rust.
+The two most important are compiler \textit{intrinsic functions} where the implementation is hidden by the compiler;
+And the \textit{Foreign Function Interface} for interfacing C-Style exports.
+Both of them call instructions that are not represented in the MIR graph.
+
+These calls leave the realm of rust code where no guarantees can be made (which makes most of them unsafe).
+But on lower level code we won't get around them.
+For example rusts thread interface in linux systems is an abstraction of the `pthread' library which is written in C.
+To translate such items we will have to emulate them somehow.
+In case of compiler intrinsics this would be a finit amount of work but there is no upper bound for foreign functions that might be called.
+So we have to implement at least a generic translation that works for all calls.
+Additionally we can translate important functionality by hand.
+
+A generic call can be thought of a combination of a statement and a terminator.
+The locals for the arguments have to be accessed by a transition like we did for the statements.
+Afterwards we branch depending on the return value, like we did in the terminators.
+This behavior describes all basic data manipulation functionality.
+But there are other functionalities that we need to address in a special way:
+some foreign functionality can influence the execution flow.
+For example mutexes and threads are significant for our purposes.
+
+\subsection*{Mutexes}
+Mutexes guard execution flow depending on a data variable.
+If we just access the variable and continue like we do for statements, flow could always continue.
+However, flow should only be allowed to continue if the mutex variable can be acquired (and block otherwise).
+This can easily be modeled in Petri-Nets with a marked mutex place.
+Then, on every try to acquire the mutex a transition has to consume the token from the mutex place.
+The first try will do so without further problems but every following attempt will be blocked, since transitions can only fire when all pre-places are properly marked.
+When leaving the critical section a transition needs to reproduce a mark on the mutex place again, so that blocked processes can continue with their computation.
+
+%TODO: bild!
+In rust Mutexes are part of the standard library.
+Before data guarded by a mutex can be mutated it has to be unlocked.
+If it is, the data cannot be accessed again until the lock is released.
+This is done automatically when the variable of the accessed data goes out of scope.
+listing \ref{rust-mutex} shows an example usage of a mutex.
+
+\lstset{language=Rust,caption={Mutex in rust},label=rust-mutex, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\begin{lstlisting}
+use std::sync::{Arc, Mutex};
+
+// Here we're using an Arc (reference counting smart pointer)
+// to share memory among threads, and the data inside the Arc
+// is protected with a mutex.
+let data = Arc::new(Mutex::new(0));
+{ // begin of a new scope
+    // Mutex is acquired by the lock() method.
+    // If the lock was previously acquired the call will block
+    // until the lock is released
+    let mut data: Arc<Mutex<i32>>= *data.lock().unwrap();
+    // mutate data
+    data += 1;
+    // the lock is released here when `data` goes out of scope.
+} // end of scope
+\end{lstlisting}
+
+Now, the call to mutex \textit{lock()} und the release of the the lock will trigger several other functions that handle a thread safe access and the blocking behavior.
+For translation we can model the complete underlying behavior or abstract from it.
+Both approaches are perfectly valid: the former would be closer to the actual execution behavior while the latter would be closer to the basic program semantics (that does not care about the mutex implementation).
+But in favor of a small Petri-Net we stick to the abstract wa that ignores the implementation.
+When a mutex is called we will stall normal execution and just insert our own abstraction at the place of the corresponding function calls.
+But there is more we have to consider.
+
+If we take a look on a pruned version of the MIR layer in listing \ref{rust-mutex-mir} we can identify a Problem.
+Because mutexes are unlocked implicitly and often are wrapped in other types, we loose the information when a specific mutex is locked or unlocked.
+The mutex that is created in \textit{bb0} is wrapped in a smart pointer in \textit{bb2} masking the original mutex.
+In this simple program the smart pointer is unnecessary but usually mutexes guard critical sections to ensure thread safety.
+However to reference the mutex safely in multiple threads the reference has to be thread safe, which is ensured by the wrapping \textit{Arc} smart pointer.
+By the time we lock the mutex in \textit{bb4} we can not read directly from the local which mutex it belongs to (in case there are multiple mutexes in a program).
+The same problem is inherited bey the mutex guard in local \textit{\_3}.
+
+\lstset{language=Rust, caption={Pruned MIR for using a mutex},label=rust-mutex-mir, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\begin{lstlisting}
+
+fn  main() -> () {
+    let mut _0: ();
+    let _1: Arc<Mutex<i32>>;
+    let mut _2: Mutex<i32>;
+    let mut _4: &Mutex<i32>;
+    let _5: &Mutex<i32>;
+    let mut _6: &Arc<Mutex<i32>>;
+    scope 1 {
+        let _3: Result<MutexGuard<i32>, PoisonError<MutexGuard<i32>>>; 
+    }
+
+    // create the mutex first
+    bb0: {
+        _2 = const Mutex::<i32>::new(const 0i32) -> bb2; 
+    }
+
+    // move the mutex into the smart pointer
+    bb2: {
+        _1 = const Arc::<Mutex<i32>>::new(move _2) -> bb3; 
+    }
+
+    // dereference the smart pointer
+    bb3: {
+        _6 = &_1;                        
+        _5 = const <Arc<Mutex<i32>> as deref(move _6) 
+             -> [return: bb4, unwind: bb5]; 
+    }
+
+    // lock the mutex
+    bb4: {
+        _4 = _5;                         
+        _3 = const Mutex::<i32>::lock(move _4) 
+             -> [return: ..., unwind: ...]; 
+    }
+
+    // mutex goes out of scope and destructor is called
+    bb6: {
+        drop(_3) -> [return: ..., unwind: ...];
+    }
+}
+\end{lstlisting}
+
+To connect our transitions to the correct mutex places we have to track or infer the corresponding mutexes when they are locked or unlocked.
+In theory the strict borrowing and aliasing rules of rust should ensure that the correct mutex can always be inferred.
+However, this is not trivial; So in the test implementation the local variables that are associated with a mutex (like the Arc in local \_1 and the MutexGuard in local \_3) are marked with the original mutex.
+Locking and unlocking mutexes then just check the mark for the fitting mutex and connect its mutex places with the correct transitions.
+This is a simple approach for a proof of concept, but it probably can be improved especially in storage consumption.
 
 \section{Petri Net Representation}
 \label{app_petri}
-\begin{verbatim}
-    - petri net formalism and format (high level? edge descriptions)
-\end{verbatim}
-
+Implementing a basic graph structure to represent our Petri-Net is not very difficult.
+But to be compatible with a Model checker we have to use some interface or a standard that
+defines a commonly known structure.
+Luckily there exists an xml-based standard for Petri-Nets called \textbf{Petri Net Markup Language}\cite{pnml}\cite{kindler2006petri} or \textbf{PNML}.
+However, LoLa -- the model checker that we actually used -- defines it own representation.
+And a third representation that comes in handy for visualizing and debugging is \textbf{DOT}\cite{}, a simple language for graph definitions.
+All langauges are comparable in their core idea.
+They all list nodes (places, transitions) and arcs of the graph. 
+Additionally, the petri net representations encode information for token count and arc weight.
+Since all the three representation serve their own perpose, they there all integrated as target representation in our work.
+And with a finished translation we can finally feed a model checker with our Petri-Net.
 
 \section{Model Checking}
 \label{app_mc}
