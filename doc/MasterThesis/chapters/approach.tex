@@ -345,6 +345,12 @@ The terminator is modeled by one or more transitions that are connected to the e
 \end{figure}
 
 \subsection{Statements}
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\textwidth]{../diagrams/StatementsNet.png}
+    \caption{Three kinds of statements (unconnected)}
+    \label{statements_net}
+\end{figure}
 Statements are the part of the MIR that change data.
 There are several different kinds of statements;
 How many and how they are structured depend on the exact kind of the statement.
@@ -380,6 +386,12 @@ This is a convenient similarity since it increases confidence that the Petri-Net
 Next we see how jumps work in our Petri-Net model.
 
 \subsection{Terminators}
+\begin{figure}
+    \centering
+    \includegraphics[width=.9\textwidth]{../diagrams/TerminatorsNet.png}
+    \caption{Connection of terminator transitions}
+    \label{terminators_net}
+\end{figure}
 After we covered the strict sequential part of our program we will now discuss the jumping and branching terminators.
 They too have a common structure:
 Every terminator has at least one transition which consumes a token from a basic block ends place and produce a token on a basic blocks start place.
@@ -633,7 +645,7 @@ pub fn main() -> ! {
 \end{lstlisting}
 Or a program with a function call:
 
-\lstset{language=Rust,caption={A simple function call},label=endless-program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\lstset{language=Rust,caption={A simple function call},label=function_call_program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
 \begin{lstlisting}
 pub fn main() {
     let mut x = 5;
@@ -652,7 +664,7 @@ This does not necessarily have to be in multiple threads
 We simply have to lock the mutex twice in a row to create a deadlock.
 And since the rust compiler does no own deadlock analisis this code compiles successfully:
 
-\lstset{language=Rust,caption={A deadlock!},label=endless-program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\lstset{language=Rust,caption={A deadlock!},label=deadlock_program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
 \begin{lstlisting}
 use std::sync::{Arc, Mutex};
 

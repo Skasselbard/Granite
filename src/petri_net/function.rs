@@ -291,7 +291,7 @@ impl<'mir> Function<'mir> {
         let source = active_block!(self).end_place().clone();
         let op_place = op_to_data_node(condition, &self.virt_memory);
         let t = net.add_transition();
-        t.name(net, "drop".into())?;
+        t.name(net, "assert".into())?;
         net.add_arc(source, t)?;
         net.add_arc(t, target_start)?;
         net.add_arc(op_place, t)?;
