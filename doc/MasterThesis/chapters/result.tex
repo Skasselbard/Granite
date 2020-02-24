@@ -1,7 +1,13 @@
 \chapter{Result}
 \label{results}
 Having a concept on how to translate a rust program into a Petri-Net, we can now inspect the actual results.
-\section{Translation Target}
+\section{Translation target}
+\begin{figure}
+  \centering
+  \includegraphics[width=0.9\textwidth]{../diagrams/FunctionCallNet.png}
+  \caption{Translated Petr-net}
+  \label{function_call_net}
+\end{figure}
 In figure \ref{function_call_net} we can see the generated net for the function call program \ref{function_call_program} from the last chapter (since this is small enough to show and big enough to not be trivial).
 This is the true data that was produced for the dot target so we cannot immediately see the virtual boundaries for statements basic blocks and functions.
 To make the structure more clear the nodes where rearranged so that the called function is on the left and the main function on the right.
@@ -31,55 +37,65 @@ That means a missing transition does not harm.
 If previously translated functions shall be reused though, this issue needs rework.
 But to be able to skip inlining we need high level semantics anyway.
 
-An additional issue that can come to attention is that the assert terminator has no cleanup path that could lead to a panic.
-Logically the assert is inserted because the preceding checked multiplication can overflow which is undefined behavior and by default should panic in rust semantics.
-This program actually cannot fail at this point since the involved variables are constant and small enough to be multiplied.
+An additional issue that can come to attention is the missing cleanup ptah of the assert terminator.
+This is the path that would lead to a panic.
+Logically the assert is inserted because the preceding checked multiplication can overflow, which is undefined behavior and by default should panic in rust semantics.
+This particular program cannot fail at this point, since the involved variables are constant and small enough to be multiplied.
 If this is the reason why the panic path is not generated (or optimized away) in the MIR representation however, shall be a question for the rust compiler team.
 
-
+\section{Verification results}
 \begin{figure}
   \centering
-  \includegraphics[width=0.9\textwidth]{../diagrams/FunctionCallNet.png}
-  \caption{Translated Petr-net}
-  \label{function_call_net}
+  \includegraphics[width=1\textwidth]{./pictures/lola_output.png}
+  \caption{LoLa output}
+  \label{lola_output}
 \end{figure}
-\begin{verbatim}
-- expected deadlocks are detected (expected program termination)
-- examples
-  - minimal deadlock
-    - detected with variable marking
-    - not detected without emulation
-\end{verbatim}
+Of course we want to use our translation further for verification.
+Using our formula on the deadlock program from listing \ref{deadlock_program}, LoLa does find a deadlock and can produce a witness path as shown in figure \ref{lola_output}.
+In contrast, if we remove the last line of the program, no deadlock is detected.
+But, following the witness path does indeed lead to the transitions that are involved in the mutex emulation (the mutex place is empty causing involved transitions to be dead).
+Earlier tests have also shown that the mutex emulation is necessary to produce deadlocks.
+Without the information on where and how execution should be blocked, the translation process cannot infer this behavior.
+This is a general problem for blocking behavior by external cause.
+
+At this point it might be adequate to add that active waiting (looping until a guard has an expected value) is not a deadlock and also would not be detected with this approach.
+However, it is likely that a another formular can be found that verifies that leaving the waiting section is always possible.
+But again this most likely would require to consider the values that variables can hold.
 
 \section{Discussion}
-\subsection{Analysis}
-\begin{verbatim}
--  net is safe
--  without the use of some data even most flow related properties
-   are not discoverable this makes emulation necessary
--  a new local <-> memory model makes sense
--  makes emulation easier but does not resolve the problem
--  high lvl nets might resolve this issue at an unknown performance cost
-  - deadlock with multiple threads
-    - dining philosophers
-    - thread emulation not implemented
-  - data dependent deadlock
-\end{verbatim}
-  
-\subsection{Translation}
+The results show that our basic approach can be used to verify some basic properties.
+And even though the state of the translation is nowhere near productive use there are still some lessons that can be learned that we can discuss.
+\subsection{The Model}
+The main draw back that followed us for the entire process is the abstraction of data in low-level petri nets.
+The advantages of the low-level model not only is the reduced complexity and higher verification performance, it can also produce stricter assertions.
+Additionally, our particular model most likely can exploit a petri-net property called safety.
+If we overlook the work around we discussed for compensating the missing storage-statements, the token count on every place cannot exceed a maximum of one.
+One obvious use for that property is the state encoding for every place, which can be done with a single bit this way.
+This might be helpful for very large programs with lots of places.
 
-\begin{verbatim}
-- how easy/mapping quality
-    - flow is easy
-    - data is difficult
-        - data is moved between many locals
-        - moving quickly masks semantic e.g. for mutexes
-- rusts borrow checking rules can probably be exploited better
-- foreign functions cannot be translated and must be emulated
-    - special emulation makes sense for some of them
-    - especially for flow relevant functions like threads and mutexes
+The greatest disadvantage of low level Petri-Nets is the reduced expressivness of data.
+While flow related properties are easy to model with simple tokens, as soon as we enter the realm of data related properties, we have to make compromises.
+The approach we took models every interaction with data but we cannot facilitate their set of possible values for verification tasks.
+Another problem is that no moving data is modeled.
+If a previously initialized local becomes part of another local (like a field of a struct) we completely loose this information in our translation.
+Although, we can probably exploit rusts strict borrow checking and aliasing rules to model a much closer relation between data,
+both locals are generated independently with their own places and life cycle.
+An improvement for example for a move of a value from one local to another (which is encoded in MIR), is to connect the places with a transition right away.
 
-\end{verbatim}
+Another disadvantage of our current model is the inlining of functions.
+If a program calls the same function at different places a separat instance will be inserted at every call site.
+This not only makes the net larger, it also causes the translation to diverge in recursive functions.
+
+A solution for most of these problems might be high-level Petri-Nets where we can model data verbosely.
+With them we could properly model data and detach function calls from the call site.
+Only the cost for verification performance remains unknown at the moment.
+Some problems, on the other hand, cannot be solved this way.
+For example, program parts that are not represented by MIR (like foreign functions and compiler intrinsics) cannot be translated and have to be emulated.
+Also information on blocking behavior is needed to model deadlocks appropriately.
+For mutexes we again worked around this issue with emulation.
+Additional blocking functionality (like waiting threads) have to be emulated separately.
+%TODO:
+?????????????Überleitung??????????
 
 \subsection{Verification}
 \begin{verbatim}
