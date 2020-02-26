@@ -1,37 +1,35 @@
 % !TEX root = ../main.tex
 \chapter{Future Work}
 \label{future}
-\begin{verbatim}
-- model the short commings
-    - thread emulation
-    - data models
-\end{verbatim}
+Although our approach produces Petri-Nets that are close to the rust semantics there is a lot of space to improve.
+First of all necessary flow related properties have to be modeled or emulated.
+On the one hand a mechanism for splitting execution flow has to be integrated.
+Primarily that means appropriate handling of threads, most likely by emulating the functionality of starting and joining them.
+In a Petri-Net that maps simply to a transition that produces a token on two separat places or consuming from two places respectively.
+On the other the model for guarding critical sections has to be refined further.
+While the Petri-Net representation here is simple, a sound concept for the rust side has to be found.
+Emulation of mutexes probably already catches a lot of scenarios but others can be found where this not suffice.
+For example low-level \textit{no\_std} environments there the mutexes from the standard library cannot be used.
+Additionally, the current implementation actively marks locals to distinguish between mutex instances while this probably can be inferred.
 
-\section{Verification}
-\begin{verbatim}
-    
-- deadlocks
-    - introduction of multi threading
-        - paths have to join or
-        - paths need own termination places
-    - what cannot be detected
-- mir generation tests
-    - unconnected nodes
-    - flow analysis
-- automatic evaluation of wittiness path 
-- high lvl Verification
-    - requires other formulas
-\end{verbatim}
+The currently used data model can be improved as well.
+Data that moves between locals or moves into or out of structures is currently modeled independently for every local, which masks its semantic connection.
+The movement might be modeled in a Petri-Net by separating the data from locals.
+The movement then indicates that the previous local cannot access the data anymore, quite similar to the rust ownership model.
+If this can be done close to the rust semantics it might already fix the problem with marking mutexes.
 
-\section{Translation optimization}
-\begin{verbatim}
-- track moved variables
-    - refine the concept of locals and memory
-- other abstraction level
-    - more complex: high lvl nets
-    - less complex: basic blocks as places
-        - statements currently do not influence the graph anyway
-        - maybe track data that is important for flow
-- map the source to the nodes similar to the mir approach
-- analyse complex programs
-\end{verbatim}
+Given a solid translation model with a reasonable control flow emulation, more complex szenarios should be testet.
+This could include artificial ones like Dijkstra's dining philosophers \cite or real life programs.
+This would be critical to decide if the verification process is efficient enough to be used in authentic use cases.
+Such tests would also improve from more sophisticated verification results.
+Currently the witness path is only a chain of transition ids.
+But the MIR stores source file location information that could be linked with the corresponding Petri-Net nodes.
+It is likely that this information can be used to map the witness path to the original program source code.
+This would improve usability a lot.
+
+A graph representation of the MIR might also help in the development process for MIR generation.
+For example the missing storage statements we talked about in chapter \ref{results} left the initialized and dead place unconnected in the Petri-Net (which was excluded from the image).
+This is a graph property that can be verified and might indicate a bug.
+If more graph properties should be met by the MIR graph, they could be included into a test case to improve the development process.
+
+And finally, lifting the model to high-level petri nets could be a solution to some intrinsic shortcomings (like the recursion restriction) and open the door to data dependent verification properties.

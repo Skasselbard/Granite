@@ -94,18 +94,14 @@ For example, program parts that are not represented by MIR (like foreign functio
 Also information on blocking behavior is needed to model deadlocks appropriately.
 For mutexes we again worked around this issue with emulation.
 Additional blocking functionality (like waiting threads) have to be emulated separately.
-%TODO:
-?????????????Überleitung??????????
 
 \subsection{Verification}
-\begin{verbatim}
-- data representation
-- connectiveness of the graph
-- possibility of panics can be detected
-    - little usefulness in complex programs
-- simple deadlocks can already be detected
-    - finding a correct formula is not trivial
-        - panic paths mask normal execution deadlocks
-        - splitting paths can mask deadlocks from single paths
-- more sophisticated approach is necessary
-\end{verbatim}
+The ability to discover deadlocks is already a useful property for model checking.
+But our model is not restricted to this single property.
+An easy addition is to check if the panic state is reachable.
+Since increased complexity also increase the likelihood of operation that can panic this might be of limited use;
+Unless variable data can be respected.
+However, more complex properties could deal with conditional reachability.
+For example if a function can be reached from a particular program state.
+Or if every execution of a program eventually visits a function or statement.
+But then again, our statements would be much stronger if we could consider if we consider data.

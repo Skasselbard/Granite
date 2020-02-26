@@ -1,26 +1,15 @@
 % !TEX root = ../main.tex
 \chapter{Conclusion}
 \label{conclusion}
-\begin{verbatim}
-What was the goal:
-- find a mapping between rust and petri-nets
-- find deadlocks in rust programs
+The main goal of this work was finding a mapping from rust programs to Petri-Nets.
+A translated net then was intended to use in a model checker to find deadlocks.
 
-What was done:
-- find a fitting program representation to translate (mir)
-- develop a set of rules to translate from representation to formalism
-- develop rules for interfacing program logic (non-mir)
-- alter mir representations connected to deadlocks (mutexes) 
-  for flow analysis
-- check the results with simple tests programs
+To reach that goal we searched for a suitable representation for rust programs and developed a set of rules to translate that representation into Petri-Nets.
+We did this for the basic components and constructed a complete model out of that components.
+Because some important flow related information -- like blocking execution -- is hard to detect with our approach, we also added an emulation for rust mutex locks.
+And finally we tested if a simple test program can be translated and verified with a model checker to find the expected deadlock.
 
-What was found:
-- some kinds of deadlocks can be found
-- complex deadlocks need further improvement
-- data representation can be improved
-\end{verbatim}
-
-
-
-
-
+An analysis of our translation showed that our data model is very abstract and probably can be further improved.
+However, the model of program flow seems to be close to the execution semantics of rust programs.
+Our test showed the expected behavior, but complex programs where not tested because the implementation does not yet cover all necessary features.
+Yet, the general approch seems to be applicable and can be refined further to deal with complex scenarios.
