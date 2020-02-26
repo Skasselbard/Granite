@@ -1,5 +1,5 @@
 # Granite
-Find Deadlocks in Rust with Petri-Net Model checking (Master Thesis)
+Find Deadlocks in Rust with Petri-Net Model checking.
 This project was startet as part of my masters thesis "[A Petri-Net Semantics for Rust](https://github.com/Skasselbard/Granite/blob/master/doc/MasterThesis/main.pdf)".
 
 - used rust nightly can be found in the [rust-toolchain file](https://doc.rust-lang.org/nightly/edition-guide/rust-2018/rustup-for-managing-rust-versions.html#managing-versions)
