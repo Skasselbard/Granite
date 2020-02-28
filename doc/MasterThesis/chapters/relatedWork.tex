@@ -12,7 +12,6 @@ Mistakes that can be avoided with safety features like garbage collection -- com
 The Rust project is an attempt to build a language that is both: fast and safe, 
 as the official slogan indicates: ``A language empowering everyone
 to build reliable and efficient software.''\cite{rustSite}.
-%Among Rusts design considerations were memory safety, concurrency and parallelism\cite{Matsakis:2014:RL:2692956.2663188}.
 To ensure a minimal performance overhead Rusts runtime was kept small\cite[Chapter 16.1]{klabnik2018rust} and features like garbage collection where neglected\cite[Chapter 4]{klabnik2018rust}.
 Instead, safety issues are addressed with Rusts \textbf{ownership model}\cite{Matsakis:2014:RL:2692956.2663188}.
 
@@ -71,29 +70,6 @@ These phases should clarify the general concept of a compiler but in practice ph
 They can blend together and some can be skipped entirely.
 In the end however, we have a mapping from the source representation to the target representation.
 
-\section{Parallel Programs}
-\label{rel_para}
-\begin{verbatim}
-- the problem with parallel programs
-  - need to communicate data
-    - messages
-    - shared memory
-  - data needs to be 
-    - consistent 
-    - synchronized (wait for each other)
-    - up to date
-  - deadlocks can easily be introduced with 
-    synchronisation flaws \cite{}
-- what are deadlocks
-  - synchronisation
-  - mutex/semaphore
-  - threads
-  - dining philosophers
-- rust and parallel programs
-- how can deadlocks be introduced in rust
-  - rust and deadlocks -> considered safe code
-\end{verbatim}
-
 \section{Verification}
 \label{rel_mc}
 Every software engineer who worked on reasonable complex systems probably admits that initial software versions are full of inconsistencies and bugs.
@@ -124,27 +100,6 @@ Some of the major techniques are symbolic model checking, partial order reductio
 However, the important information here is that model checking can tackle systems with a realistic amount of states.
 
 What is more important to know is the model formalism we want to use in this work and how we will describe our properties; Namely Petri-Nets and CTL*.
-
-% \begin{verbatim}
-% - tests vs Model Checking
-%   - tests 
-%     - only work for specific cases\cite{}
-%     - done by program execution
-%     "Testingcan thus never be complete. That is to say, testing can only show the presence of errors,not their absence"\cite{baier2008principles}
-%   - Model Checking
-%     - needs formal specification (model) -> already discovers problems
-%     - specified properties to check
-%     -> satisfied or counterexample (figure)
-%     - works in the general case\cite{}
-%       - by exhaustiv search of state space
-%     - state explosion problem
-%       - tackled with por symmetry etc.
-%     - done by program analysis
-% - different approaches (BDDs etc.)
-% - petri nets!!
-% "The different characterizations of verification (“are we building the thing right?”)
-% and validation(“are we building the right thing?”) originate from Boehm" [52]
-% \end{verbatim}
 
 \subsection{Petri-Nets}
 \label{rel_petri}
@@ -199,25 +154,42 @@ This can be addressed with several additions that lead to \textbf{high level Pet
 Transition in high level Petri-Nets can also respect the data of tokens in their firing behavior.
 However, these additions to the formalism weaken the statements that can be derived from it, limiting the properties that can be checked for.
 
-
-
-
-\subsection{CTL*}
+\subsection{Computational Tree Logic*}
 \label{rel_ctl}
-\begin{verbatim}
-- 
-\end{verbatim}
+To articulate the properties we want to verify we need a precise formalism for both state properties and properties of timing.
+However, low-level Petri-Net are non deterministic and therefore have no time associated with transition fireing;
+Never is there a defined duration between the fireing of two transitions, nor a duration of a single fireing.
+So in our context the concept of time is not concerned with durations, but with the order of events.
+Which transition fired before another or from which state can we reach another state.
+
+These property are commonly expressed in a \textbf{temporal logic}.
+The primary ones used in model checking are linear temporal logic (LTL) from Pnueli\cite{pnueli1977temporal} computational tree logic (CTL) from Clarke and Emerson\cite{clarke1981design} and a superset which includes both: CTL* from Emerson and Halpern\cite{emerson1985decision}.
+Since we will later use CTL* to formulate our properties we will introduce its formula construction here.
+A CTL* formula can be structured with the following elements:
+\begin{itemize}
+  \item The most basic CTL* formula is an \textbf{atomic proposition} (AP) which describes an atomic part of the system state, hence it is a \textbf{state formula} $\Phi$. 
+  In our petri nets this is typically a marking of a single place like $p_1$ is marked with 5 tokens: $p_1=5$ or $p_3$ has less then 3 tokens $p_3<3$.
+  \item Every state formula is also a \textbf{path formula} $\varphi$ which describe a sequence of events in a system.
+  A plain state formula like from above describes the path to the initial state of the system. Such a formula is satisfied if the first state of the system satisfies the property (and makes no statement on the following states).
+  \item formulas can be combined to a larger formulas with logic operators. For example: $!(p_1=5\ \&\ p_3<3)$.
+  \item The \textbf{Next} operator $X\varphi$ describes a path to the successor state. 
+  $p_1=5$ is satisfied if $p_5$ is marked with 5 tokens in the first state, $X(p_1=5)$ is satisfied if $p_5$ is marked with 5 tokens in the second state, $XX(p_1=5$) is satisfied if $p_5$ is marked with five tokens in the third state and so on.
+  \item The \textbf{Eventually} operator $F\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in some successor state or if it is reachable from the formula it is applied on.
+  \item The \textbf{Always} operator $G\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in every successor state or if it always satisfied in the enclosed formula.
+  \item The \textbf{Until} operator $\varphi_1 U\varphi_2$ describes a path formula that is satisfied if the the formula $\varphi_1$ is satisfied in every state until a state is reached which satisfies $\varphi_2$ at least once.
+  For example there is always an active transition in a circle (of the form $t_1\rightarrow p_1 \rightarrow ... \rightarrow t_n \rightarrow p_n \rightarrow t_1$ ) as long as at least one of the places is marked with a token.
+  But it can be marked again later if all tokens where lost.
+  \item And finally there are the \textbf{Path quantifiers} $E\varphi$ and $A\varphi$ which can be used to make a statement for the branching behavior of the system.
+  Depending on a given state there might be multiple possible following states.
+  In Petri-Nets that means there are multiple active transitions that can fire next.
+  So depending on the actually firing transition, the sequence of following states (the paths) can differ.
+  If the \textbf{Universal path quantifier} $A$ is applied on a path formula the resulting formular is only satisfied if the path formula is satisfied in all branching paths.
+  In contrast the \textbf{Existential path quantifier} only requires the associated path formula to be satisfied in one of the successive paths.
+\end{itemize}
+The AP's and operators can be combine to express complex properties which serve as an input for model checkers.
 
 
-\begin{verbatim}
-  - other verification implementations
-    - (verification by language?)
-      - functional programming invariants?
-      - prolog invariants?
-      - languages with verification methods in its design?
-    - c verification
-      - valgrind?
-    - rust verification
-  - petri net verification
-    - bpel
-\end{verbatim}
+
+\section{Correctness and rust}
+"machine-checked proof of semantic soundness for lambda-calculus model of Rust"\cite{Jung:2017:RSF:3177123.3158154}
+"First, Jung et al. proposed a formal definition of a core typed calculus called lambda\_Rust, which encapsulates the central features of the Rust language. Second, they used theCoq proof assistant to verify formally that Rust’s aforementioned safety guarantees do in fact hold,both for the core $$lambda_Rust$$ calculus and for a number of widely-used Rust libraries"https://plv.mpi-sws.org/rustbelt/rbrlx/paper.pdf
