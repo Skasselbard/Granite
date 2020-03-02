@@ -1,13 +1,12 @@
 % !TEX root = ../main.tex
 \chapter{Background and related work}
-%TODO: intro
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\cite{klabnik2018rust}
+Before we start there are some basics that are useful to know about.
+In this chapter we try to address the most important ones, starting with our source language: Rust.
 \section{Rust}
 \label{rel_rust}
 Typically programming languages can be divided into fast or safe: 
-To increase software speed, developers have to optimize specific system details.
-This micro management easily leads to mistakes as it is hard to keep track of the complexity of the whole system.
-Mistakes that can be avoided with safety features like garbage collection -- compromising execution speed.
+either a language is used to produce highly optimized code that runs fast on the targeted system,
+or a language makes use of a lot of safety features that prevent inconsistencies at the cost of runtime performance.
 
 The Rust project is an attempt to build a language that is both: fast and safe, 
 as the official slogan indicates: ``A language empowering everyone
@@ -17,19 +16,24 @@ Instead, safety issues are addressed with Rusts \textbf{ownership model}\cite{Ma
 
 In Rust, a memory resource (object) is associated by one unique owning variable.
 The owner can mutate the object, reference it or hand over ownership.
-By handing over ownership it is lost for the previous owner, to unsure unique ownership.
-However, references can be `borrowed' in two flavors without loosing ownership:
+By handing over ownership it is lost for the previous owner (to unsure unique ownership).
+However, references can be `borrowed' without loosing ownership.
+These borrows come at two flavors:
 \begin{enumerate}
   \item There can be an arbitrary amount of \textbf{immutable references} at a given time.
   \item But only one active \textbf{mutable reference}. 
-  No immutable references can be active at the same time and the owner is prohibited from mutating.
+  No immutable references can be active at the same time and the owner is prohibited from mutating while a mutable borrow is active.
 \end{enumerate}
-References that go out of scope are ensured to be deconstructed by Rusts \textbf{borrow checker}. Programs that don't meet the ownership requirements will not compile and raise an appropriate error message.
+References that go out of scope are ensured to be deconstructed by Rusts \textbf{borrow checker}. 
+Programs that do not meet the ownership requirements will not compile and raise an appropriate error message.
 
 By enforcing the ownership rules, Rust programs avoid common problems like dangling pointers, double frees and data races\cite{Matsakis:2014:RL:2692956.2663188} with no impact on execution speed.
 The cost is transferred to compile time, where additional errors complicate development and established programing patterns have to be revised.
 And while eliminating all these errors can be invaluable, Rust cannot prevent all mistakes.
 One of which are deadlocks\cite[Chapter 8.1]{nomicon} which we want to address with this work.
+
+% TODO: what is a deadlock 
+% TODO: what is a mutex
 
 [Überleitung]
 
@@ -51,8 +55,7 @@ Nowadays the structure of a compiler can be summarized into well defined phases\
   Tokens are all significant language components like keywords, identifiers and symbols (`=', `+', `\{', etc.).
   \item During \textbf{Syntax Analysis} (parsing) the token stream is structured into a tree,
   typically a syntax tree, where each node represents an operation with its children as operation arguments.
-  \item The following \textbf{Semantic Analysis} checks that the syntax actually matches the requirements;
-  The grammar that the language is based on.\newline
+  \item The following \textbf{Semantic Analysis} checks that the syntax actually matches the requirements (the grammar that the language is based on).\newline
   Additional static analysis -- like type checking -- is done in this phase as well.
   \item Further representations might be produced in the \textbf{Intermediate Code Generation} phase.
   An intermediate representation can be everything that helps.
@@ -61,18 +64,18 @@ Nowadays the structure of a compiler can be summarized into well defined phases\
   \item The intermediate representation can be used for further analysis and optimization in the \textbf{Code Optimization} phase.
   Executable size or execution speed might be improved here.
   Multiple intermediate representations might be generated and optimized before entering the final phase.
-  \item And \textbf{Code Generation}, which generates another representation.
+  \item The \textbf{Code Generation} phase, which generates another representation.
   The only difference is that it is the final one -- the target representation.
   Thus it often produces executable machine code.
 \end{enumerate}
 
-These phases should clarify the general concept of a compiler but in practice phases might be less distinct.
+These phases resemble the general concept of a compiler but in practice phases might be less distinct.
 They can blend together and some can be skipped entirely.
 In the end however, we have a mapping from the source representation to the target representation.
 
 \section{Verification}
 \label{rel_mc}
-Every software engineer who worked on reasonable complex systems probably admits that initial software versions are full of inconsistencies and bugs.
+Every software engineer who worked on reasonable complex systems probably admits that initial software versions are usually full of inconsistencies and bugs.
 To achieve resilient and correct software a detailed understanding of the system and careful reviews of the implementation is needed.
 If this process is done systematically it is called verification.
 
@@ -80,24 +83,25 @@ To verify that software operates correctly it is required to know what `correct'
 Correctness is no intrinsic property of a system;
 It has to be defined in its context.
 For this, a description of the system -- a \textbf{specification} is required, to infer the \textbf{properties} it should fulfill.
+% TODO:
 \% example for specification and properties \%
 A \textbf{system is correct} if its specification satisfies all its properties\cite[Chapter 1]{baier2008principles}.
 
 Among important approaches to verify software are code reviews and testing.
 Both techniques are valuable to find different kinds of errors.
-But in this work we will focus on \textbf{Model Checking}, an approach to search the complete state space of a system.
+But in this work we will focus on \textbf{Model Checking}, an approach to search for properties in the complete state space of a system.
 
 \subsection{Model Checking}
 Model checking tries to solve the ambitious problem to check a property for every possible system configuration.
-To do that, the behavior of a system needs to be represented in a (name giving) model
-and separately the properties that the system needs to fulfill;
+To do that, firstly the behavior of a system needs to be represented in a (name giving) model
+and secondly the properties that the system needs to fulfill has to be specified;
 Typically in a formal logic.
 Having both, all possible relevant model states are explored to verify that the given properties hold in that state.
 Unfortunately the the amount of states is typically exponential in the system size;
 A phenomenon that is known as the \textbf{state explosion problem}\cite[Introduction]{mcmillan1993symbolic}.
-This is the most outstanding problem of model checking, but it would be less used if there where no way to weaken the explosions impact.
+This is the most outstanding problem of model checking, but it would be less used if there where no ways to weaken the impact of the explosion.
 Some of the major techniques are symbolic model checking, partial order reduction and abstraction refinement\cite[Chapter 5]{clarke2011model}.
-However, the important information here is that model checking can tackle systems with a realistic amount of states.
+However, the important information here is that model checking nowadays, can tackle systems with a practical amount of states.
 
 What is more important to know is the model formalism we want to use in this work and how we will describe our properties; Namely Petri-Nets and CTL*.
 
@@ -107,13 +111,13 @@ Petri-Nets where developed in the mid 1900's by Carl Adam Petri\cite{petri1962ko
 It is a formalism that is well suited to model concurrent behavior, since it does not model each state explicitly.
 
 Petri-Nets are a bipartite directed graph.
-That means that a Petri-Net has two kinds of nodes where one kind is always connected to the other but never with itself.
+That means that a Petri-Net has two kinds of nodes where one kind is always connected to the other but never with the own kind.
 One type of nodes are \textbf{places}, that can hold an arbitrary amount of \textbf{tokens}.
 In low level petri nets these tokens do not carry any information; 
 Only the amount of tokens on each place determines the system state.
 The other node type are \textbf{transitions}.
 A transition is \textbf{enabled} when places that are connected with an incoming edge (from place to transition) have at least as many tokens as the corresponding edges \textbf{weight};
-I.e. A place that is connected through an edge with weight three needs at least three tokens.
+I.e. a place that is connected through an edge with weight three needs at least three tokens.
 A transition without incoming edges is always enabled.
 Enabled transitions can \textbf{fire}.
 A firing transition \textbf{consumes} tokens corresponding to the edge weight from places connected with incoming edges -- the transition \textbf{preset} -- and \textbf{produces} tokens corresponding to the edge weight on places with outgoing edges -- the transition \textbf{postset}.
@@ -139,6 +143,7 @@ Other important definitions are:
   \item the postset of a place $p \in P$ is: $p\bullet = \{t \in T | (p,t) \in F\}$
   \item a transition $t \in T$ is enabled if $\forall (p,t) \in \bullet t: M(p) \geq W(p,t)$
 \end{itemize}
+% TODO:
 !!!\\
 examples\\
 !!!
@@ -158,37 +163,34 @@ However, these additions to the formalism weaken the statements that can be deri
 \label{rel_ctl}
 To articulate the properties we want to verify we need a precise formalism for both state properties and properties of timing.
 However, low-level Petri-Net are non deterministic and therefore have no time associated with transition fireing;
-Never is there a defined duration between the fireing of two transitions, nor a duration of a single fireing.
+Neither is there a defined duration between the fireing of two transitions, nor a duration of a single fireing.
 So in our context the concept of time is not concerned with durations, but with the order of events.
 Which transition fired before another or from which state can we reach another state.
 
 These property are commonly expressed in a \textbf{temporal logic}.
-The primary ones used in model checking are linear temporal logic (LTL) from Pnueli\cite{pnueli1977temporal} computational tree logic (CTL) from Clarke and Emerson\cite{clarke1981design} and a superset which includes both: CTL* from Emerson and Halpern\cite{emerson1985decision}.
+The primary ones used in model checking are linear temporal logic (LTL) from Pnueli\cite{pnueli1977temporal} computational tree logic (CTL) from Clarke and Emerson\cite{clarke1981design} and CTL* from Emerson and Halpern\cite{emerson1985decision}, a superset which includes both.
 Since we will later use CTL* to formulate our properties we will introduce its formula construction here.
 A CTL* formula can be structured with the following elements:
 \begin{itemize}
   \item The most basic CTL* formula is an \textbf{atomic proposition} (AP) which describes an atomic part of the system state, hence it is a \textbf{state formula} $\Phi$. 
-  In our petri nets this is typically a marking of a single place like $p_1$ is marked with 5 tokens: $p_1=5$ or $p_3$ has less then 3 tokens $p_3<3$.
+  In our petri nets this is typically a marking of a single place like $p_1$ is marked with 5 tokens: $p_1=5$, or $p_3$ has less then 3 tokens: $p_3<3$.
   \item Every state formula is also a \textbf{path formula} $\varphi$ which describe a sequence of events in a system.
   A plain state formula like from above describes the path to the initial state of the system. Such a formula is satisfied if the first state of the system satisfies the property (and makes no statement on the following states).
-  \item formulas can be combined to a larger formulas with logic operators. For example: $!(p_1=5\ \&\ p_3<3)$.
-  \item The \textbf{Next} operator $X\varphi$ describes a path to the successor state. 
-  $p_1=5$ is satisfied if $p_5$ is marked with 5 tokens in the first state, $X(p_1=5)$ is satisfied if $p_5$ is marked with 5 tokens in the second state, $XX(p_1=5$) is satisfied if $p_5$ is marked with five tokens in the third state and so on.
-  \item The \textbf{Eventually} operator $F\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in some successor state or if it is reachable from the formula it is applied on.
-  \item The \textbf{Always} operator $G\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in every successor state or if it always satisfied in the enclosed formula.
+  \item Formulas can be combined to larger formulas with logic operators. For example: $!(p_1=5\ \&\ p_3<3)$.
+  \item The \textbf{Next} operator $X\varphi$ describes a path to the successor state. For example: $p_1=5$ is satisfied if $p_5$ is marked with 5 tokens in the first state, $X(p_1=5)$ is satisfied if $p_5$ is marked with 5 tokens in the second state, $XX(p_1=5$) is satisfied if $p_5$ is marked with five tokens in the third state and so on.
+  \item The \textbf{Eventually} operator $F\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in some successor state or -- to formulate it differently -- if it is reachable from the formula it is applied on.
+  \item The \textbf{Always} operator $G\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in every successor state -- or if it is always satisfied in the enclosed formula.
   \item The \textbf{Until} operator $\varphi_1 U\varphi_2$ describes a path formula that is satisfied if the the formula $\varphi_1$ is satisfied in every state until a state is reached which satisfies $\varphi_2$ at least once.
   For example there is always an active transition in a circle (of the form $t_1\rightarrow p_1 \rightarrow ... \rightarrow t_n \rightarrow p_n \rightarrow t_1$ ) as long as at least one of the places is marked with a token.
   But it can be marked again later if all tokens where lost.
   \item And finally there are the \textbf{Path quantifiers} $E\varphi$ and $A\varphi$ which can be used to make a statement for the branching behavior of the system.
   Depending on a given state there might be multiple possible following states.
   In Petri-Nets that means there are multiple active transitions that can fire next.
-  So depending on the actually firing transition, the sequence of following states (the paths) can differ.
-  If the \textbf{Universal path quantifier} $A$ is applied on a path formula the resulting formular is only satisfied if the path formula is satisfied in all branching paths.
-  In contrast the \textbf{Existential path quantifier} only requires the associated path formula to be satisfied in one of the successive paths.
+  So depending on the actually firing transition, the resulting sequence of following states (the paths) can differ.
+  If the \textbf{Universal path quantifier} $A\varphi$ is applied on a path formula the resulting formular is only satisfied if the path formula is satisfied in \textbf{all} branching paths.
+  In contrast the \textbf{Existential path quantifier} $E\varphi$ only requires the associated path formula to be satisfied in \textbf{one} of the successive paths.
 \end{itemize}
 The AP's and operators can be combine to express complex properties which serve as an input for model checkers.
-
-
 
 \section{Integrity of Rust}
 Rust design principles strongly include memory safety and other safety properties.
@@ -196,9 +198,9 @@ And there is an effort in the language community to formalize and proof these pr
 A core part of rusts memory management was modeled in a formalism named Patina by Reed\cite{reed2015patina} in 2015.
 Patinas statements are shown to satisfy memory safety properties like initialization before use or aliasing bounds for mutable memory.
 $\lambda_{Rust}$ by Jung et. al.\cite{Jung:2017:RSF:3177123.3158154} extends its statements to unsafe code (where the rust borrow checker does not enforce its strong rules) and was verified to hold the formulated safety guarantees.
-Recently Jung et. al published another approach to minimize undefined behavior in unsafe code (where compiled code can be unpredictable due to different compiler implementations).
+Recently Jung et. al published another approach to minimize undefined behavior (where compiled code can be unpredictable due to different compiler implementations) in unsafe code.
 These are important approaches to proof the guarantees that the language claims to give.
 However, guarantees outside of these boundaries have to be verified by other means.
 Besides regular methods like unit and integration tests there is a model checking effort by Toman et. al \cite{toman2015crust} to give further memory safety guarantees especially on unsafe code.
-And since Rust is a rather recent development that is just getting more and more attention it is likely that other efforts to ensure correctness of rust programs will be done in the future.
+And since Rust is a rather recent development it is likely that other efforts to ensure correctness of rust programs will be done in the future.
 One of them is described in the next chapter.

@@ -2,7 +2,7 @@
 \chapter{Conclusion}
 \label{conclusion}
 The main goal of this work was finding a mapping from rust programs to Petri-Nets.
-A translated net then was intended to use in a model checker to find deadlocks.
+A translated net then was intended to be used in a model checker to find deadlocks.
 
 To reach that goal we searched for a suitable representation for rust programs and developed a set of rules to translate that representation into Petri-Nets.
 We did this for the basic components and constructed a complete model out of that components.
@@ -11,5 +11,5 @@ And finally we tested if a simple test program can be translated and verified wi
 
 An analysis of our translation showed that our data model is very abstract and probably can be further improved.
 However, the model of program flow seems to be close to the execution semantics of rust programs.
-Our test showed the expected behavior, but complex programs where not tested because the implementation does not yet cover all necessary features.
+Our test showed the expected behavior, but complex programs where not tested because the implementation does not cover all necessary features.
 Yet, the general approch seems to be applicable and can be refined further to deal with complex scenarios.
