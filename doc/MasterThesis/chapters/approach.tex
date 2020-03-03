@@ -477,12 +477,17 @@ For example mutexes that are significant for our purposes.
 Mutexes guard execution flow depending on a data variable.
 If we just access the variable and continue like we do for statements, flow could always continue.
 However, flow should only be allowed to continue if the mutex variable can be acquired (and block otherwise).
-This can easily be modeled in Petri-Nets with a marked mutex place.
+This can easily be modeled in Petri-Nets with a marked mutex place as figure \ref{mutex_net} shows.
 Then, on every try to acquire the mutex a transition has to consume the token from the mutex place.
 The first try will do so without further problems but every following attempt will be blocked, since transitions can only fire when all pre-places are properly marked.
 When leaving the critical section a transition needs to reproduce a mark on the mutex place again, so that blocked processes can continue with their computation.
+\begin{figure}
+    \centering
+    \includegraphics[width=.4\textwidth]{../diagrams/mutexNet.png}
+    \caption{Two flows guarded by a mutex}
+    \label{mutex_net}
+\end{figure}
 
-%TODO: bild!
 In rust Mutexes are part of the standard library.
 Before data guarded by a mutex can be mutated it has to be unlocked.
 If it is, the data cannot be accessed again until the lock is released.
