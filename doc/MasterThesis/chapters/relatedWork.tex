@@ -32,21 +32,25 @@ The cost is transferred to compile time, where additional errors complicate deve
 And while eliminating all these errors can be invaluable, Rust cannot prevent all mistakes.
 One of which are deadlocks\cite[Chapter 8.1]{nomicon} which we want to address with this work.
 
-% TODO: what is a deadlock 
-% TODO: what is a mutex
-
-[Überleitung]
+\section{Deadlock and Mutex}
+Typically deadlocks are a problem of concurrent systems where resources are shared or a section of a program must only be entered once at a time (a critical section).
+To assure sequential access those resources are often guarded by a locking mechanisms like Dijkstras semaphores\cite{dijkstra1968cooperating} or the simpler form: a mutex.
+Mutex stands for mutual exclusion and is used to lock access to a critical section.
+If a process of a program wants to enter this section it has to acquire a mutex lock.
+This is only possible if no other process currently has acquired the lock, otherwise the former process has to wait (or try later).
+If the critical section is left by the locking process the lock has to be released to unblock waiting processes.
+If the locks are not released correctly it can lead to a situation where all process are waiting to acquire a mutex lock that will never be released and the whole execution comes to a halt: a deadlock.
+A deadlock situation often depends on nondeterministic behavior (for example process/thread scheduling or network communication) which can make debugging rather difficult.
+Therefore having proof of deadlock absence can be a powerful information especially in highly parallel systems.
 
 \section{Compilers}
 The goal of this work is to combine the benefits of the Rust ownership system with the benefits of Petri-Net model checking.
-
 To achieve this goal we have to translate from Rust to Petri-Nets, 
 and we want to do it programmatically.
 This is basically the definition of a compiler\cite[Chapter 1.1]{aho1986compilers}:
 \begin{quote}
 ``Simply stated, a compiler is a program that can read a program in one language -- the source language -- and translate it into an equivalent program in another language -- the target language;''
 \end{quote}
-
 Compilers underwent heavy research and development in the past.
 Nowadays the structure of a compiler can be summarized into well defined phases\cite[Chapter 1.2]{aho1986compilers}:
 
