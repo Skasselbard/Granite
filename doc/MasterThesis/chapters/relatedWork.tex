@@ -147,10 +147,31 @@ Other important definitions are:
   \item the postset of a place $p \in P$ is: $p\bullet = \{t \in T | (p,t) \in F\}$
   \item a transition $t \in T$ is enabled if $\forall (p,t) \in \bullet t: M(p) \geq W(p,t)$
 \end{itemize}
-% TODO:
-!!!\\
-examples\\
-!!!
+\begin{figure}
+  \centering
+  \includegraphics[width=.5\textwidth]{../diagrams/netExamples.png}
+  \caption{Petri-Net examples}
+  \label{net_examples}
+\end{figure}
+Figure \ref{net_examples} shows four examples for Petri-Nets.
+In the top left corner is a net with one place and one transition.
+The place is marked with two tokens and is the only place in the transitions preset.
+This means that the transition is active and can fire.
+Since every fireing consumes a token (no edge annotations mean an edge weight of one) the transition can fire exactly two times.
+After that the net will be dead.
+The net below looks similar, only the edge direction is flipped.
+Now the preset of the transition is empty.
+The semantics here is that the transition can always fire since all places in the preset are properly marked.
+As a result the connected place can accumulate an unbounded amount of tokens.
+The third net in the bottom left corner has a circular shape.
+At any given time one of the two transitions can fire, virtually moving the token back and forth.
+The token count in this net has an upper bound of one since both transitions always consume as many tokens as they produce and it initial marking has one token.
+It also has no terminal state and can always fire one of the two transitions.
+And the last net on the right shows that tokens indeed are produced and consumed, not moved.
+The top transition will consume a token from the top place and produce two tokens, one on each place below.
+After that the second transition will consume both tokens (one token from each place in the preset) and produce a token on the bottom most place.
+It is not possible to consume only one of the two tokens -- every place from the preplace is involved in the fireing of a transition!
+And after the second transition has fired the net will be dead in a terminal state.
 
 Where is a large formal background to Petri-Nets that makes it possible to check for a variety of properties.
 For example it can be analysed if a particular marking can be reached from an initial marking or how many tokens a place may hold.
