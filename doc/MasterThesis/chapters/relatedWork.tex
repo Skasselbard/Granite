@@ -1,5 +1,5 @@
 % !TEX root = ../main.tex
-\chapter{Background and related work}
+\chapter{Background}
 Before we start there are some basics that are useful to know about.
 In this chapter we try to address the most important ones, starting with our source language: Rust.
 \section{Rust}
@@ -216,16 +216,3 @@ A CTL* formula can be structured with the following elements:
   In contrast the \textbf{Existential path quantifier} $E\varphi$ only requires the associated path formula to be satisfied in \textbf{one} of the successive paths.
 \end{itemize}
 The AP's and operators can be combine to express complex properties which serve as an input for model checkers.
-
-\section{Integrity of Rust}
-Rust design principles strongly include memory safety and other safety properties.
-And there is an effort in the language community to formalize and proof these properties.
-A core part of rusts memory management was modeled in a formalism named Patina by Reed\cite{reed2015patina} in 2015.
-Patinas statements are shown to satisfy memory safety properties like initialization before use or aliasing bounds for mutable memory.
-$\lambda_{Rust}$ by Jung et. al.\cite{Jung:2017:RSF:3177123.3158154} extends its statements to unsafe code (where the rust borrow checker does not enforce its strong rules) and was verified to hold the formulated safety guarantees.
-Recently Jung et. al published another approach to minimize undefined behavior (where compiled code can be unpredictable due to different compiler implementations) in unsafe code.
-These are important approaches to proof the guarantees that the language claims to give.
-However, guarantees outside of these boundaries have to be verified by other means.
-Besides regular methods like unit and integration tests there is a model checking effort by Toman et. al \cite{toman2015crust} to give further memory safety guarantees especially on unsafe code.
-And since Rust is a rather recent development it is likely that other efforts to ensure correctness of rust programs will be done in the future.
-One of them is described in the next chapter.

@@ -1,4 +1,22 @@
 % !TEX root = ../main.tex
+\chapter{Related work}
+Rusts design principles strongly include memory safety and other safety properties.
+And there is an effort in the language community to formalize and proof these properties.
+A core part of rusts memory management was modeled in a formalism named Patina by Reed\cite{reed2015patina} in 2015.
+Patinas statements are shown to satisfy memory safety properties like initialization before use or aliasing bounds for mutable memory.
+$\lambda_{Rust}$ by Jung et. al.\cite{Jung:2017:RSF:3177123.3158154} extends its statements to unsafe code (where the rust borrow checker does not enforce its strong rules) and was verified to hold the formulated safety guarantees.
+Recently Jung et. al published another approach to minimize undefined behavior (where compiled code can be unpredictable due to different compiler implementations) in unsafe code.
+These are important approaches to proof the guarantees that the language claims to give.
+However, guarantees outside of these boundaries have to be verified by other means.
+Besides regular methods like unit and integration tests there is a model checking effort by Toman et. al \cite{toman2015crust} to give further memory safety guarantees especially on unsafe code.
+
+Despite Petri-Nets models are seemingly not used for verification of traditional programming languages there was some effort to model general concurrent programs with the Basic Petri Net Programming Notation B(PN)$^2$ by Best et. al\cite{Best1993BPN2A}.
+They used multilabled nets (M-nets)\cite{best1995class}, a class of high-level Petri-Nets for their approach.
+Fleischhack et. al. extended B(PN)$^2$ with procedures -- including recursion\cite{fleischhack1997petri}.
+There is also research on Petri-Net semantics for description languages like the commonly used Specification and Description Language (SDL)\cite{fleischhack1998compositional} (also based on M-nets) or the Business Process Execution Language for Web Services (BPEL)\cite{stahl2005petri}\cite{lohmann2007feature}.
+Both are used to verify properties of processes that are formulated in their description language.
+Also the $\pi$-calculus is backed by a Petri-Net semantics\cite{busi1995petri} based on low-level Petri-Nets with inhibitor arcs (inhibitor arcs require the connected pre-place to be empty to activate a transition).
+
 \chapter{Conclusion}
 \label{conclusion}
 The main goal of this work was finding a mapping from rust programs to Petri-Nets.
