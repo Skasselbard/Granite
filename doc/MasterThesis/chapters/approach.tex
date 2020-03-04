@@ -657,14 +657,13 @@ This does not necessarily have to be in multiple threads
 (which is fortunate since we did not cover actual parallelism with threads yet).
 We simply have to lock the mutex twice in a row to create a deadlock.
 And since the Rust compiler does no own deadlock analisis this code compiles successfully:
-
-\lstset{language=Rust,caption={A deadlock!},label=deadlock_program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+% TODO: reference from introduction
+\lstset{language=Rust,caption={A deadlock!},label=deadlock_program2, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
 \begin{lstlisting}
 use std::sync::{Arc, Mutex};
 
 pub fn main() {
     let data = Arc::new(Mutex::new(0));
-    let data = Mutex::new(0);
     let _d1 = data.lock();
     let _d2 = data.lock(); // cannot lock, since d1 is still active
 }// unreachable end of main

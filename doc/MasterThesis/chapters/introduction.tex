@@ -1,44 +1,29 @@
 % !TEX root = ../main.tex
 \chapter{Introduction}
 \label{introduction}
-\section{Motivation}
-High quality work is the desire of a professional;
-Consequently, high quality software is the desire of a professional software engineer.
-However, achieving high quality software is an ambiguous task, since it is rather context dependent.
-But some methods like static analysis or model checking can be automated to find common problems with little human effort.
 
-Static analysis is typically part of programming languages.
-One popular property this approach guarantees, is type safety.
-But some recent programming languages like Rust\cite{Matsakis:2014:RL:2692956.2663188} make use of additional invariants.
-In the case of Rust, the ownership model is the most notable additional concept of static analisis.
-With strict mutability and aliasing rules, the ownership model avoids a variety of memory safety issues.
-The price is restricted expressiveness, that manifests in compiler warnings previously unknown to other languages.
+Here is a simple Rust\cite{klabnik2018rust} program that stops execution before it can terminate successfully:
 
-% TODO:
-Model checking on th other hand is typically not a feature of programming languages, as it requires a mapping to a formalism.
-But if such a mapping exists, desireable properties can be proven mathematically for all possible runs of a program.
-One formalism that is especially suited to analyse flow of execution are Petri-nets.
+\lstset{language=Rust,caption={A deadlock!},label=deadlock_program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\begin{lstlisting}
+use std::sync::{Arc, Mutex};
 
-In this work we will try to find a mapping between Rust programs and Petri-nets for the perpose of model checking.
-We will check for a deadlock as an example property in a small program to prove the concept.
+pub fn main() {
+    let data = Arc::new(Mutex::new(0));
+    let _d1 = data.lock();
+    let _d2 = data.lock();
+}
+\end{lstlisting}
+The reason is a deadlock that is reached by locking an already locked mutex that will never be released.
+Rust is a language that is highly concerned with memory safety and concurrency\cite{Matsakis:2014:RL:2692956.2663188} but the detection of deadlocks is explicitly excluded from the design\cite[Chapter 8.1]{nomicon}(for good reasons).
+Nevertheless, it could be invaluable to detect such a situation automatically.
+A proven method to do so is model checking\cite{baier2008principles} there we check a model of our program against certain properties.
 
-\section{Outline}
-The structure of this work is as follows.
-
-First we need to establish the basics.
-In the background section we will first take a closer look on \hyperlink{rel_rust}{Rust}.
-After that we will review the basic concept of compilers to learn how source code is translated into another representation.
-Next we have to inspect the topic of \hyperlink{rel_mc}{Model Checking} with Petri-Nets and CTL*.
-And finally we look into the efforts that have been done by others.
-
-After we understand those principles, we can move on to the approach taken.
-We will again start with the specifics of \hyperlink{app_rust}{Rust}.
-How can we translate a Rust program into something we need,
-and what language concepts do we need to understand.
-We will see that the Rust language has an \hyperlink{app_mir}{intermediate representation} that simplifies our situation.
-The most important part will be the \hyperlink{app_trans}{translation} of the language features to a petri net.
-It will contain a detailed description of our mapping and its limits.
-Next, the generated Petri-Net has to be analysed by a Model Checker. 
-\hyperlink{app_mc}{How this is done} and our \hyperlink{app_test}{test scenario} we will discuss be discussed at the end of the chapter.
-
-Finally wie will \hyperlink{results}{discuss the results} and infer \hyperlink{future}{future work} from the implementations shortcomings.
+In this work we will:
+\begin{itemize}
+    \item develop a Petri-Net\cite{petri1962kommunikation} semantics for Rust programs in chapter \ref{app_trans} to serve as a model,
+    \item find a mutex semantics for our model in chapter \ref{emulation}
+    \item detect the deadlock in the program from listing \ref{deadlock_program} with a model checker in chapter \ref{app_mc} and \ref{results},
+    \item investigate the result and the shortcomings of our approach in chapter \ref{results}
+    \item and show a list of improvements that could lift our approach to be useable in realistic use cases
+\end{itemize}
