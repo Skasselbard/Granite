@@ -5,7 +5,7 @@ Although our approach produces Petri-Nets that are close to the Rust semantics t
 First of all, necessary flow related properties have to be modeled or emulated.
 On the one hand a mechanism for splitting execution flow has to be integrated.
 Primarily that means appropriate handling of threads, most likely by emulating the functionality of spawning and joining them.
-In a Petri-Net that maps simply to a transition that produces a token on two separat places or consuming from two places respectively.
+In a Petri-Net that maps simply to a transition that produces a token on two separate places or consuming from two places respectively.
 On the other hand, the model for guarding critical sections has to be refined further.
 While the Petri-Net representation here is simple, a sound concept for the rust side has to be found.
 Emulation of mutexes probably already catches a lot of scenarios but others can be found where this not suffice.
@@ -15,11 +15,11 @@ Additionally, the current implementation actively marks locals to distinguish be
 The currently used data model can be improved as well.
 Data that moves between locals or moves into or out of structures is currently modeled independently for every local, which masks its semantic connection.
 The movement might be modeled in a Petri-Net by separating the data from locals.
-The movement then indicates that the previous local cannot access the data anymore, quite similar to the rust ownership model.
+A move then indicates that the previous local cannot access the data anymore, quite similar to the rust ownership model.
 If this can be done close to the rust semantics it might already fix the problem with marking mutexes.
 
 Given a solid model with a reasonable control flow emulation, more complex szenarios should be testet.
-This could include artificial ones like Dijkstra's dining philosophers \cite or real life programs.
+This could include artificial ones like Dijkstras dining philosophers \cite or real life programs.
 This would be critical to decide if the verification process is efficient enough to be used in authentic use cases.
 Test analysis would also improve from more sophisticated verification results.
 Currently the witness path is only a chain of transition ids.

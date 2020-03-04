@@ -16,21 +16,21 @@ The initialized places of the locals where renamed to show their MIR name (local
 We can see a path from program start to program end;
 The panic place is unconnected because the program cannot panic.
 Local life cycles are also visible as a single edged path from marked uninitialized place to unmarked dead places.
-Variable manipulation always has parallel incoming and outgoing edges.
-On a closer look we can see that local $\_3$ of the called function has no storage live and dead statements.
+In contrast, variable manipulation always has parallel incoming and outgoing edges.
+On a closer look we can see that local $\_3$ of the called function has no storage live or storage dead statements.
 This is actually a correct representation of the MIR graph:
 for some reason the storage statements are not generated for some lvalues (in this case the lvalue from checked multiplications).
 If this is expected behavior is not known at the time of writing;
 A bug report \cite has yet to be solved.
 Unfortunately this behavior introduces an unintended deadlock into our translation since depending transitions can only fire if the initialized places where previously marked.
 To use the net for verification we have to work around this issue until it is fixed (or until the cause is modeled correctly).
-Te be able to continue testing simply all initialized place where marked.
+To be able to continue testing simply all \textit{initialized} places where marked.
 This way the involved transitions can fire, but only if the previous transition produced a token on the connecting place (the program counter place). 
 An additional token will also remain on the initialized places even after the storage dead transition fired.
 However execution flow, again, will not be affected because of the program counter places.
 
 A second detail that the net shows is that the function call transition is implicit;
-The last statement of the main functions first basic block is directly connected to the first statement of the callees first basic block.
+The last statement of the main functions first basic block (\textit{StorageLive(\_3)}), is directly connected to the first statement of the callees first basic block (\textit{Assign(\_3, \_1)}).
 This is an implementation detail of the translator.
 Since our model currently always inlines function calls (it generates a separate net for every call), these are entirely sequential.
 That means a missing transition does not harm.
@@ -64,12 +64,12 @@ But again this most likely would require to consider the values that variables c
 
 \section{Discussion}
 The results show that our basic approach can be used to verify some basic properties.
-And even though the state of the translation is nowhere near productive use there are still some lessons that can be learned that we can discuss.
+And even though the state of the translation is nowhere near productive use there are some lessons that can be learned that we can discuss.
 \subsection{The Model}
 The main draw back that followed us for the entire process is the abstraction of data in low-level petri nets.
 The advantages of the low-level model not only are the reduced complexity and higher verification performance, it can also produce stricter assertions.
-Additionally, our particular model most likely can exploit a petri-net property called safety.
-If we overlook the workaround for compensating the missing storage-statements, the token count on every place cannot exceed a maximum of one.
+Additionally, our particular model most likely can exploit a petri-net property called safety:
+if we overlook the workaround for compensating the missing storage-statements, the token count on every place cannot exceed a maximum of one.
 One obvious use for that property is the state encoding for every place, which can be done with a single bit this way.
 This might be helpful for very large programs with lots of places.
 
@@ -77,14 +77,14 @@ The greatest disadvantage of low level Petri-Nets is the reduced expressivness o
 While flow related properties are easy to model with simple tokens, as soon as we enter the realm of data related properties, we have to make compromises.
 The approach we took models every interaction with data but we cannot facilitate their set of possible values for verification tasks.
 Another problem is that no moving data is modeled.
-If a previously initialized local becomes part of another local (like a field of a struct) we completely loose this information in our translation.
+If a previously initialized local moves into another local (like a field of a struct) we completely loose this information in our translation.
 Although, we can probably exploit Rusts strict borrow checking and aliasing rules to model a much closer relation between data,
 both locals are generated independently with their own places and life cycle.
-An improvement for example for a move of a value from one local to another (which is encoded in MIR), is to connect the places with a transition right away.
+An improvement for a move of a value from one local to another (which is encoded in MIR), could be to connect the places with a transition right away.
 
-Another disadvantage of our current model is the inlining of functions.
+Another disadvantage of our current model is inlining of functions.
 If a program calls the same function at different places, a separat instance will be inserted at every call site.
-This not only makes the net larger, it also causes the translation to diverge in recursive functions.
+This not only makes the net larger, it catches the translation process in an endless loop in recursive functions.
 
 A solution for most of these problems might be high-level Petri-Nets where we can model data verbosely.
 With them we could properly model data and detach function calls from the call site.
