@@ -21,9 +21,10 @@ A proven method to do so is model checking\cite{baier2008principles} there we ch
 
 In this work we will:
 \begin{itemize}
-    \item develop a Petri-Net\cite{petri1962kommunikation} semantics for Rust programs in chapter \ref{app_trans} to serve as a model,
+    \item develop a Petri-Net\cite{petri1962kommunikation} semantics for Rust programs to serve as a model in chapter \ref{approach} (especially chapter \ref{app_trans}) ,
     \item find a mutex semantics for our model in chapter \ref{emulation}
     \item detect the deadlock in the program from listing \ref{deadlock_program} with a model checker in chapter \ref{app_mc} and \ref{results},
     \item investigate the result and the shortcomings of our approach in chapter \ref{results}
-    \item and show a list of improvements that could lift our approach to be useable in realistic use cases
+    \item and show a list of improvements that could lift our approach to be useable in realistic use cases in chapter \ref{future}
 \end{itemize}
+But before all of that, we take a look on some of the concepts that this work is based on.

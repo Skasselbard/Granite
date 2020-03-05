@@ -1,9 +1,14 @@
 % !TEX root = ../main.tex
-\section*{Titel}
-% TODO:
+\section*{Eine Petrinetzsemantik für Rust}
+Es wird ein allgemeiner Ansatz gezeigt Rustprogramme in ein Petrinetzmodel zu überführen.
+Die Übersetzung eines Beispielprogramms wird als Eingabe in einem Model-Checker verwendet um einen Deadlock zu finden, der durch mehrfaches blockieren eines Mutex verursacht wir.
+Anschließend werden einige Vorschläge zur Verbesserung der gezeigten Übersetzung diskutiert.
 
-\section*{Titel english}
-
+\section*{A Petri-Net semantics for Rust}
+We show a general approach to translate a Rust program into a Petri-Net model.
+An example program is used as input for a model checker to find a contained deadlock.
+The deadlock is caused by locking a mutex multiple times.
+In the last part of this work we discuss how our approach can be improved further.
 
 \vfill
 
