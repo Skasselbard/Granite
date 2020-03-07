@@ -19,7 +19,7 @@ A move then indicates that the previous local cannot access the data anymore, qu
 If this can be done close to the rust semantics it might already fix the problem with marking mutexes.
 
 Given a solid model with a reasonable control flow emulation, more complex szenarios should be testet.
-This could include artificial ones like Dijkstras dining philosophers \cite or real life programs.
+This could include artificial ones like Dijkstras dining philosophers \cite{dijkstra1971hierarchical} or real life programs.
 This would be critical to decide if the verification process is efficient enough to be used in authentic use cases.
 Test analysis would also improve from more sophisticated verification results.
 Currently the witness path is only a chain of transition ids.

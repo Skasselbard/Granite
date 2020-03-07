@@ -1,3 +1,6 @@
+% TODO: oli Ich würde das in zwei Kapitel teilen. 4.1 und 4.2 unter eine Überschrift wie "Demonstration", gerne auch mit den übrigen Beispielprogrammen aus 3.9.
+% Und den Discussion Teil als separates Kapitel, eventuell unter auch mit dem Titel "Evaluation".
+% Wirklich "Results" deiner Arbeit sind ja die Erkentnisse, die in der Discussion stehen. Der Andere Teil zeigt eben, dass dein Konzept und deine Implementierung funktionieren.
 \chapter{Result}
 \label{results}
 Having a concept on how to translate a rust program into a Petri-Net, we can now inspect the actual results.
@@ -5,7 +8,7 @@ Having a concept on how to translate a rust program into a Petri-Net, we can now
 \begin{figure}
   \centering
   \includegraphics[width=0.9\textwidth]{../diagrams/FunctionCallNet.png}
-  \caption{Translated Petr-net}
+  \caption{Translated Petr-Net}
   \label{function_call_net}
 \end{figure}
 In figure \ref{function_call_net} we can see the generated net for the function call program \ref{function_call_program} from the last chapter (since this is small enough to show and big enough to not be trivial).
@@ -21,7 +24,7 @@ On a closer look we can see that local $\_3$ of the called function has no stora
 This is actually a correct representation of the MIR graph:
 for some reason the storage statements are not generated for some lvalues (in this case the lvalue from checked multiplications).
 If this is expected behavior is not known at the time of writing;
-A bug report \cite has yet to be solved.
+A bug report\footnote{https://github.com/rust-lang/rust/issues/67400} has yet to be solved.
 Unfortunately this behavior introduces an unintended deadlock into our translation since depending transitions can only fire if the initialized places where previously marked.
 To use the net for verification we have to work around this issue until it is fixed (or until the cause is modeled correctly).
 To be able to continue testing simply all \textit{initialized} places where marked.
@@ -67,7 +70,7 @@ The results show that our basic approach can be used to verify some basic proper
 And even though the state of the translation is nowhere near productive use there are some lessons that can be learned that we can discuss.
 \subsection{The Model}
 The main draw back that followed us for the entire process is the abstraction of data in low-level petri nets.
-The advantages of the low-level model not only are the reduced complexity and higher verification performance, it can also produce stricter assertions.
+The advantages of the low-level model are not only the reduced complexity and higher verification performance, it can also produce stricter assertions.
 Additionally, our particular model most likely can exploit a petri-net property called safety:
 if we overlook the workaround for compensating the missing storage-statements, the token count on every place cannot exceed a maximum of one.
 One obvious use for that property is the state encoding for every place, which can be done with a single bit this way.
@@ -99,8 +102,8 @@ Additional blocking functionality (like waiting threads) have to be emulated sep
 The ability to discover deadlocks is already a useful property for model checking.
 But our model is not restricted to this single property.
 An easy addition is to check if the panic state is reachable.
-Since increased complexity also increase the likelihood of operation that can panic this might be of limited use;
-Unless variable data can be respected.
+Unfortunately virtually every program with a realistic size can panic.
+So this property is of limited use unless variable data can be respected.
 However, more complex properties could deal with conditional reachability.
 For example if a function can be reached from a particular program state.
 Or if every execution of a program eventually visits a function or statement.

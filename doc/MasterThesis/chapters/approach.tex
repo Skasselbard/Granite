@@ -3,7 +3,7 @@
 \label{approach}
 After we learned the underlying concepts, we can go on with the actual task.
 
-In this chapter we will come up with an idea to translate rust code into Petri-Nets.
+In this chapter we will introduce with an idea to translate rust code into Petri-Nets.
 We will see that the rust compiler creates an intermediate representation that fits our needs nicely.
 We will work out a translation for each of the elements in this intermediate representation, and discuss the format that we will translate into.
 Finally we will show how we can use a model checker to find a deadlock in a simple test program.
@@ -12,16 +12,16 @@ Finally we will show how we can use a model checker to find a deadlock in a simp
 \label{app_rust}
 There are basically two options to translate rust into Petri-Nets:
 \begin{enumerate}
-    \item write an own translator or,
+    \item write a translator from scratch or,
     \item use something existing.
 \end{enumerate}
 Writing an own translator means total control over the process.
-Features can be added iteratively as needed and data structures can be designed efficiently for our special perpose.
+Features can be added iteratively as needed and data structures can be designed efficiently for our special purpose.
 However, this would result in a new compiler for rust which eventually has to cover every language feature;
 Including some difficult ones like macro expansion and generics.
-Features that someone already implemented, spending a fair amount of thought in the process;
-Backed by a large community;
-Over several years.
+Features that someone already implemented, spending a fair amount of thought in the process,
+backed by a large community,
+over several years.
 Resulting in a compiler that is openly available under an open source license\cite{rustc}, with a maintained documentation\cite{rustc-guide}\cite{rustc-doc}.
 And even though learning how this complex compiler works, and where to find the relevant parts for this project is also difficult, it seems to be time worth spend if we are able to skip learning and implementing all facets of difficult features.
 For this reason this project is based on the rust compiler \textit{rustc}.
@@ -38,10 +38,10 @@ The rust compiler does have several phases and a variety of intermediate represe
     Things like type checking and encapsulation verification is done on this representation.
     \item Another representation is generated in phase five: the mid-level intermediate representation (\textbf{MIR}).
     Now we leaving the tree structure and switching to a graph.
-    MIR is based on a control-flow graph \cite and language features are reduced to a minimum.
+    MIR is based on a control-flow graph\cite{10.1145/800028.808479} and language features are reduced to a minimum.
     There is only one type of loop and branches respectively (only gotos instead of ifs or pattern matching).
     Additional static analysis like rusts borrow checking as well as further optimization is done on the mir level.
-    \item Phase six lowers the MIR to the rust independant LLVM\cite intermediate representation.
+    \item Phase six lowers the MIR to the rust independant LLVM\cite{lattner2004llvm} intermediate representation.
     LLVM IR is a low level representation that is close to assembly language.
     Optimization for this representation can now be done for the code resulting in several object files.
     \item In the last phase the object files are linked into a complete binary executable.
@@ -53,7 +53,7 @@ This leaves us with several options to intercept and translate the current inter
 After deciding to use the rust compiler as basis for this work, we need to determine the phase we want to intercept the default compilation to translate to our own target.
 A suitable location makes use of the most existing compiler features with the least amount of translation effort.
 
-We want to skip behind basic features like name resolution as we need them ourselves and surely won't improve it with a reimplementation.
+We want to intercept after basic features like name resolution as we need them ourselves and surely won't improve them in a reimplementation.
 Also code generation, including macro and generics expansion, should be handled by the stock compiler.
 They just produce more rust code that we will treat anyway.
 And after expansion, no code generation syntax will remain and we can simply ignore this feature.
@@ -68,16 +68,15 @@ A less optional compiler feature that will greatly ease our effort is the loweri
 After all that means that several high level language features are reduced to less low level features.
 Which in turn means less features we have to cover with our implementation.
 We don't want to go to low though, since lower representations might prevent us from exploiting assumptions that are hidden in the translation process.
-We also probably want to avoid a machine dependant representation.
-To verify generic rust programs and not the peculiarities of a single machine.
+We also probably want to avoid a machine dependant representation,
+to verify generic rust programs and not the peculiarities of a single machine.
 This might be debateable though.
 
-Lastly we want to make use of all optimizations we can.
+Finally we want to make use of all optimizations we can.
 Especially optimizations that reduce the code (and resulting net) size.
 So features like constant propagation and dead code elimination would be nice to have to reduce the impact of state explosion.
-At least a little bit.
 
-Looking back on the rust compiler phases with those thoughts in mind, the seemingly best place we can intercept is between phase five and six.
+Looking back on the rust compiler phases with those thoughts in mind, the best place we can intercept is between phase five and six.
 After borrow checking and optimizations on the MIR.
 Here, all code was expanded, all rust specific static analisis and optimization was done and all unnecessary language features where reduced to a minimal set of instructions.
 And since both MIR and Petri-Nets are graph representations, a mapping should be relatively straight forward.
@@ -86,8 +85,6 @@ Also we avoid the still lower level and Rust independent LLVM IR and the machine
 
 \section{Mid-level Intermediate Representation (MIR)}
 \label{app_mir}
-%TODO: examples examples examples
-
 Now where we pinned down MIR as the intermediate representation to use, it is helpful to understand how it is structured.
 Here is a simple Rust program:
 \lstset{language=Rust, caption={A Rust program. And there is no deadlock! },label=rust-switch, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
@@ -207,37 +204,29 @@ All of which join in a basic block with a single \textit{return} terminator.
 After we saw how the MIR graph is structured, we can try to find a translation to Petri-Nets. This will include some more details and edge cases we have to consider.
 
 \subsection{Entry Point}
-\begin{figure}
-    \centering
-    \includegraphics[width=.9\textwidth]{../diagrams/basic_program.png}
-    \caption{
-        Stubs for programs and functions, and a minimal terminating program.
-        A program has a start and an end place.
-        The start place holds a token, as program execution begins there.
-        If a program terminates successfully the program end place is marked.
-        A termination caused by a panic marks only the panic place.\\
-        A function has a distinct starting place (it always starts at the first basic block).
-        But there is no end place, as functions can be left by any terminator.\\
-        The shortest possible (terminating) program has an empty main function.
-        Program start place and main function start place are one and the same place.
-        Empty functions have no basic block in MIR, so we have to add an artificial transition to leave the function.
-    }
-    \label{program_blocks_trans}
-\end{figure}
 We will start with the most abstract view on our translation: the whole program.
-A program is something that typically has a beginning end an ending.
+A program is something that typically has a beginning and an ending.
 We can model this with a \textbf{program start} and a \textbf{program end} place.
 Depending on the program they are interconnected somehow.
 The sole exception are programs with a diverging main function -- where the main function ends in an endless loop.
 In this case the end place will not be connected to the graph, which will have no negative effect on the verification process.
 In Rust a second end place for panics -- the \textbf{panic end} place -- is a helpful addition.
 This place will be marked then the program terminated unsuccessfully after a panic was raised.
-A circumstance that might be helpful to distinguishing in verification runs.
+A circumstance that might be helpful to distinguish in verification runs.
 Finally the program start place needs to be marked with a token.
 We will later see that this token also indicates the first statement to execute and that it virtually moves from statement to statement acting like a program counter (even though petri net tokens do not move semantically but rather be consumed and produced).
+Figure \ref{program_stub} shows the three resulting places.
+\begin{figure}
+    \centering
+    \includegraphics[width=.4\textwidth]{../diagrams/basic_program_new.png}
+    \caption{
+        Features that every program shares: the start and end places.
+    }
+    \label{program_stub}
+\end{figure}
 
 Although these are all the basic features shared by every program, we still have to look a little closer on the semantics of the program start place.
-This place is a bit ambiguous since, in practice, the main function is not wat is executed first.
+This place is a bit ambiguous since, in practice, the main function is not what is executed first.
 Usually programs have a `runtime' that is initialized before main() is called.
 These setup static memory and initialize language specific features, among other things.
 And even though low level languages like Rust or C have a small runtime, they still have one.
@@ -253,16 +242,36 @@ So, because of these reasons we decided to skip the pre main() code and start tr
 
 \subsection{Functions}
 The next important part of a program are the executed functions.
-As in most other imperative languages rust programs have a main function that wrap all its functionality (excluding the runtime as discussed in the previous section).
-The main function can call other functions that inturn can call additional functions, and so on.
+As in most other imperative languages, Rust programs have a main function that wrap all its functionality (excluding the runtime as discussed in the previous section).
+The main function can call other functions that in turn can call additional functions, and so on.
 When executing a program the called functions are organized on a stack called `call stack'.
 When a new function is entered a new stack frame is pushed on the stack including information like function arguments and local variables.
 On leaving a function it is removed from the stack deallocating memory the frame occupied.
 
-In MIR calling and returning from functions is done in a basic block terminator and can occur arbitrarily often.
+In MIR, calling and returning from functions is done in a basic block terminator and can occur arbitrarily often.
 Considering this behavior in a Petri-Net function model would be of no help, leaving just the start place as a feasible similarity between functions:
 a function that is called always begins its execution there.
-And it will always be identical to the start place of the first basic block.
+And it will always be identical to the start place of the first basic block as pictured in figure \ref{basic_program}.
+
+Now we can almost model the first complete program: the empty program:
+\lstset{language=Rust,caption={The empty program},label=empty-program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\begin{lstlisting}
+pub fn main() {}
+\end{lstlisting}
+The translated Petri-Net for the empty program can be seen in figure \ref{basic_program}.
+Its program start place is also the start place of the main function.
+We anticipate the return terminator here (discussed in chapter \ref{terminators}) to connect program start and program end place.
+The result is a net that consumes a token from the program start place and produces a token on the program end place.
+Afterwards the net is in its terminal state.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.7\textwidth]{../diagrams/function_and_empty_program.png}
+    \caption{
+        A conceptual view on a function on the left. The Empty program on the right.
+    }
+    \label{basic_program}
+\end{figure}
 
 So, from a modeling perspective functions are not the decisive abstraction.
 But if we consider the translation process they get more important.
@@ -270,12 +279,12 @@ The rustc interface for MIR works per function.
 This means that it is not possible (at least not obviously) to get the MIR from a whole program.
 Just function per function.
 A likely explanation for this design choice is that a lot of context information switches with functions.
-For example every functions starts with basic block zero and increases the count for the following.
-Local variables are also indexed from zero on for each function with some of them having a special meaning:
+For example every functions starts with basic block zero and increases the count for the following basic blocks.
+Local variables are also indexed from zero on for each function, with some of them having a special meaning:
 the first local is always the functions return value and it is followed by locals for all function arguments.
 If we want to translate a program we have to keep this structure in mind.
 
-In our implementation we have done this virtually by an own call stack.
+In our implementation we have done this virtually with an own call stack.
 We traverse the program function by function.
 Every time we encounter a function-call-terminator we try to translate the called function and return where we left after we are done.
 On the new call the context is switched to the new variables and basic blocks, and the return semantics is stored.
@@ -287,18 +296,18 @@ However, this approach has some implications:
     \item The far more extensive implication are the voided recursion capabilities.
     If we encounter a recursive function with this strategie, the translation process will be trapt in an endless loop.
 \end{enumerate}
-Actually recursion is a feature that can never be achieved with low-level Petri-Nets, as it data model cannot be mapped properly.
+Actually recursion is a feature that can never be achieved with low-level Petri-Nets, as its data model cannot be mapped properly.
 How often a recursive function is called depends on the data it is called with and cannot be known at compile time.
 In normal program execution functions are just pushed on a new stack frame until it is resolved (the base case is called for all recursive calls) or the stack overflows.
 Most relevant programs will be still executable.
 But we cannot model this stack like behavior in low-level Petri-Nets because we cannot get additional memory (this would mean a dynamic set of places in a static graph).
 All memory we have is that we know of at compile time.
 And we cannot reuse the places of a function for different recursion levels as we can not distinguish the tokens from the recursion levels.
-We could just remodel each recursion level again and again to a fixed recursion level.
+We could just remodel each recursion level again and again to a fixed recursion depth.
 However, this would impact the verification results, since a property might change for programs with different maximum recursion depths.
 
 A solution to this problem can be high-level petri nets, where we can distinguish between tokens.
-There we could reuse places from the same function by annotating tokens with the corresponding recursion level.
+There, we could reuse places from the same function by annotating tokens with the corresponding recursion level.
 We won't go into detail of this approach, though, since this work is based on the low-level semantics.
 We will just have to accept that we cannot translate recursive functions for the time being.
 
@@ -306,18 +315,19 @@ We will just have to accept that we cannot translate recursive functions for the
 To translate a rust program we cannot focus only on execution flow.
 We also need a valid representation of data.
 Unfortunately, as mentioned before, data is complicated to model in low-level petri nets.
-With only the concept of bare tokens, we can only model finite memory space and even if we do, modeling every state of every possible variable would bloat our net terribly.
+With only the concept of bare tokens, we can only model finite memory space and even then: modeling every state of every possible variable would bloat our net terribly.
 
 To stay in the realm of low-level nets we need to abstract from variable states.
 In principle a Petri-Net place is already something that holds data: a set of tokens.
 For our purposes we can interpret a place as a memory location and a token as arbitrary data.
-Though we loose a the information for the actual variable value, we still can analyse the program flow.
+Though we loose the information for the actual variable value, we still can analyse the program flow.
 Additionally, this representation resonates well with a possible high-level extension where the token can be annotated with the current value of a variable.
 So, to keep it simple we represent a memory location as a single place with a single token.
 `Reading' from and `writing' to memory can be modeled with a transition that consumes the token, while also producing a token.
 In theory the consumed and produced token in a read has to be the same while writing can change the token.
 But again this is only relevant for high-level nets.
 
+% TODO: Oli Hier gehört ne Zitation hin.
 Now, in many programing language there are different concepts of memory that behave differently, and rust is no exception.
 Basically we can distinguish between four different concepts:
 \begin{enumerate}
@@ -344,12 +354,18 @@ This includes the values the variable can be assigned to as well as information 
 Each local starts in an uninitialized state until a statement is called to set it `storage live'.
 A living variable can be assigned to arbitrary values (constraint by its type) as long as it is needed.
 Afterwards a statement sets the variable `storage dead' to indicate that it will not be used again in this function call.
-We can model these states with three Petri-Net places for each local: one place for the uninitialized state, one for the living state there the variable can be used and one for the dead state.
+We can model these states with three Petri-Net places for each local as shown in figure \ref{local}: one place for the uninitialized state, one for the living state there the variable can be used and one for the dead state.
 The first active state will be `uninitialized' so this one must be marked with a token initially.
 The unique `storage live' and `storage dead' statements (which are special statements generated for the MIR) have to be called to traverse the three states.
 They will consume a token from the previous state and produce one on the next.
 This enforces that data access can only be done if a token is on the live place.
 This way we can later verify if the liveness invariants are met.
+\begin{figure}
+    \centering
+    \includegraphics[width=.2\textwidth]{../diagrams/local.png}
+    \caption{Places of a local in a function.}
+    \label{local}
+\end{figure}
 
 Heap and static space is hidden behind local variables.
 For example we can access a value on the heap by dereferencing a pointer we stored in a local.
@@ -366,10 +382,10 @@ Much easier to model is the space for constant variables.
 Their behavior is close to locals that live for the entire runtime.
 So they do not need any uninitialized or dead place, just a place that represents the current value.
 In fact we can model the whole constant space as a single Petri-Net place, where every access is done with different transitions.
-Where is no data manipulation anyway.
+There is no data manipulation anyway.
 And again this approch resonates well with a possible high-level petri net extension where every accessing transition produces tokens annotated with the corresponding constant values.
 
-In conclusion we need two models for memory access: a a set of place for each local variable with uninitialized, live, and dead place, and a single place that represents the whole constant memory space.
+In conclusion we need two models for memory access: a a set of places for each local variable with uninitialized, live, and dead place, and a single place that represents the whole constant memory space.
 Memory is accessed and modified in statements and if we have to handle heap space we can hide this behind an access of a local variable which is projected to other memory space that we are unable to control (or model).
 Before we take a deeper look on the memory using statements next we will see how we can model the basic blocks that contains the statements.
 
@@ -388,28 +404,24 @@ The terminator is modeled by one or more transitions that consume the token from
     \includegraphics[width=.9\textwidth]{../diagrams/basic_blocks.png}
     \caption{
         The structure of basic blocks and statements.
-        Basic blocks as well as statements have a distinct start and end place.
-        The start place of the first statement is identical with the basic block start place.
-        The same is true for the lasts statements end place and the basic block end.
-        Also the end place of a leading statement is the start place of the following statement (illustrating the sequential nature of statements).
-        Terminators are represented entirely by transitions that are not pictured here, as they are typically linking to other basic blocks.
     }
     \label{basic_block_trans}
-\end{figure}A basic block does not have many features of its own.
+\end{figure}
+A basic block does not have many features of its own.
 Statements are the part of the MIR graph that change data.
 There are several different kinds of statements with some of them not used in every compiler phase.
-For example a MIR statement named `FakeRead' is used for static analysis but removed in a later optimization phase when the sanity was satisfied.
+For example a MIR statement named `FakeRead' is used for static analysis but is removed in a later optimization phase when the sanity was satisfied.
 
 The general structure of the different statements, however, is always rather similar.
 In Petri-Net terms, they have a starting place, a transition that manipulates some data places and an end place.
-If two statements succeed each other, the first transitions end place will be the seconds transition start place.
-Similarly, the start place of the first statement in a sequence will be shared with the start place of the surrounding basic block
+If two statements succeed each other, the first statements end place will be the seconds statements start place.
+Similarly, the start place of the first statement in a sequence will be shared with the start place of the surrounding basic block.
 Likewise the end place of the basic block is shared with the end place of the last statement.
 The statement transition will consume a token from the start place and produce a token on its end place.
 Additionally, the transition will consume and produce a token on data places to resemble an interaction with this data.
 As mentioned earlier the actual data is transparent in the low-level Petri-Net model but might be added in a possible high-level model.
 
-As an example for the data manipulation we can look at the three most important statements: `StorageLive', `StorageDead' and `Assign'.
+As an example for the data manipulation we can look at the three most important statements\footnote{A complete list can be found in the documentation: https://doc.rust-lang.org/nightly/nightly-rustc/rustc/mir/enum.StatementKind.html}: `StorageLive', `StorageDead' and `Assign'.
 \begin{itemize}
     \item The \textit{StorageLive} statement consumes a token from the \textit{uninitialized} place of a local variable, and produces one on its \textit{live} place.
     \item The \textit{StorageDead} statement consumes a token from the \textit{live} place of a local variable, and produces one on its \textit{dead} place.
@@ -421,7 +433,7 @@ As an example for the data manipulation we can look at the three most important 
 
 \begin{figure}
     \centering
-    \includegraphics[width=.9\textwidth]{../diagrams/StatementsNet.png}
+    \includegraphics[width=.6\textwidth]{../diagrams/StatementsNet.png}
     \caption{Three kinds of statements (unconnected)}
     \label{statements_net}
 \end{figure}
@@ -434,11 +446,12 @@ This next instruction might just increment the counter (in sequential parts) to 
 This is a convenient similarity since it increases confidence that the Petri-Net actually models something similar to an execution semantics of a real program.
 
 \subsection{Terminators}
+\label{terminators}
 After we covered the strict sequential part of our program we will now discuss the jumping and branching terminators.
 They too have a common structure:
 Every terminator has at least one transition which consumes a token from a basic blocks end place and produce a token on a basic blocks start place.
 
-The MIR representation again has different kinds of terminators. Here is a list with the most important ones:
+The MIR representation again has different kinds of terminators\footnote{A complete list can be found in the documentation: https://doc.rust-lang.org/nightly/nightly-rustc/rustc/mir/enum.TerminatorKind.html}. Here is a list with the most important ones:
 \begin{itemize}
     \item The most basic \textit{Goto} terminator has a single transition.
     It connects two basic blocks inside a single function.
@@ -463,20 +476,98 @@ The MIR representation again has different kinds of terminators. Here is a list 
 
 \begin{figure}
     \centering
-    \includegraphics[width=.9\textwidth]{../diagrams/TerminatorsNet.png}
+    \includegraphics[width=.8\textwidth]{../diagrams/TerminatorsNet.png}
     \caption{Connection of terminator transitions}
     \label{terminators_net}
 \end{figure}
 
-We can see that terminators determine successful and unsuccessful execution causing panics which are a error handling mechanic of rust.
-This is an important part of program execution and demands a little closer look.
+With an entry point, basic blocks, a representation of locals and constants, statements and terminators we can build a more complex program.
+Consider this simple program with a function call:
+\lstset{language=Rust,caption={A simple function call},label=function_call_program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\begin{lstlisting}
+pub fn main() {
+    let mut x = 5;
+    x = call(x);
+}
+
+fn call(i: usize) -> usize {
+    i * 2
+}
+\end{lstlisting}
+The generated MIR for listing \ref{function_call_program} (shown in listing \ref{function_call_program_mir}) is a bit more complex.
+Not only because of the \textit{StorageLive} and \textit{StorageDead} statements, but also because of additional copies of locals.
+Additionally both \textit{main} function and \textit{call} function are split into two basic blocks.
+The \textit{main} function has to be split because the function-call-terminator redirects control flow to another function.
+And the \textit{call} function has to be split because of a multiplication that might overflow.
+An assert terminator guarantees that this behavior is detected and treated.
+
+\lstset{language=Rust,caption={Generated MIR for a simple function call},label=function_call_program_mir, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
+\begin{lstlisting}
+    fn  main() -> () {
+        let mut _0: ();
+        let mut _1: usize;
+        let mut _2: usize
+        let mut _3: usize
+        bb0: {
+            StorageLive(_1);
+            _1 = const 5usize;
+            StorageLive(_2);
+            StorageLive(_3);
+            _3 = _1;
+            _2 = const call(move _3) -> bb1;
+        }
+    
+        bb1: {
+            StorageDead(_3);
+            _1 = move _2;
+            StorageDead(_2);
+            StorageDead(_1);
+            return;
+        }
+    }
+    fn  call(_1: usize) -> usize {
+        let mut _0: usize; 
+        let mut _2: usize; 
+        let mut _3: (usize, bool); 
+        bb0: {
+            StorageLive(_2); 
+            _2 = _1; 
+            _3 = CheckedMul(move _2, const 2usize 
+            assert(!move (_3.1: bool), "attempt to multiply with overflow") -> bb1 
+        }
+        bb1: {
+            _0 = move (_3.0: usize); 
+            StorageDead(_2); 
+            return; 
+        }
+    }
+    
+\end{lstlisting}
+
+Figure \ref{function_call_net_pruned} shows how the translated net should look for the \textit{main} function.
+The program starts in \textit{BB0}, where all locals are set \textit{StorageLive} and the value of local \textit{\_1} is set to 5.
+At the end of the basic block, the subroutine is called with local \textit{\_2} as return value and local \textit{\_3} as an argument.
+To represent that their values might change in the subroutine they are connected with it.
+After the call returns its return value is assigned to local \textit{\_1} and all locals are set \textit{StorageDead}.
+Only the panic place is unconnected since there is no panic path generated in the MIR representation.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=.95\textwidth]{../diagrams/FunctionCallNetPruned.png}
+    \caption{Main function for listing \ref{function_call_program}}
+    \label{function_call_net_pruned}
+\end{figure}
+
+
+But it could as well have been.
+And since this is an important part of program execution it demands a closer look.
 
 \section{Panic Handling}
 Error handling is a vital part in programming and typically is considered in program language design.
 Many languages implement an exception semantic with try and catch blocks.
 Exceptions can be thrown and if they are not catched the program terminates ungracefully.
 
-Rust has a different approach: normally functions are expected to not fail.
+Rust has a different approach: normally functions are expected not to fail.
 Functions that can fail will return a \textit{Result} type that can be the result of the computation or an error with a description.
 The type system enforces handling of both cases and the language gives some mechanisms to do so.
 Of course the interesting part is the error case.
@@ -508,8 +599,6 @@ Most of the time it is possible to avoid unsafe code using abstractions and safe
 Only a small code base needs to use unsafe code to create those safe abstractions. 
 And once the integrity there is kept, all depending higher level code benefits.
 
-%TODO: überleitung
-
 \section{Interface Emulation}
 \label{emulation}
 There are endless possibilities to implement an algorithm and not all of them depend on Rust as description language.
@@ -523,7 +612,7 @@ These calls leave the realm of rust code where no guarantees can be made (which 
 But on lower level code we won't get around them.
 For example rusts thread interface in linux systems is an abstraction of the `pthread' library which is written in C.
 To translate such items we will have to emulate them somehow.
-In case of compiler intrinsics this would be a finit amount of work but there is no upper bound for foreign functions that might be called.
+In case of compiler intrinsics this would be a finite amount of work but there is no upper bound for foreign functions that might be called.
 So we have to implement at least a generic translation that works for all calls.
 
 A generic FFI-call can be thought of as a combination of a statement and a terminator.
@@ -635,6 +724,7 @@ However, this is not trivial in our model; So in the test implementation the loc
 Locking and unlocking mutexes then just check the mark for the fitting mutex and connect its mutex places with the correct transitions.
 This is a simple approach for a proof of concept, but it probably can be improved especially in terms of storage consumption.
 
+% TODO: Im Prinzip sind 3.7 und 3.8 Implementierungsdetails und nicht mehr Teil des Konzepts. Das Könte auch (zsammen mit etwas mehr Beschreibug des Implementierung) ein eigenes Kapitel sein.
 \section{Petri Net Representation}
 \label{app_petri}
 Implementing a basic graph structure to represent our Petri-Net is not very difficult.
@@ -642,7 +732,7 @@ But to be compatible with a Model checker we have to use some interface or a sta
 defines a commonly known structure.
 Luckily there exists an XML-based standard for Petri-Nets called \textbf{Petri Net Markup Language}\cite{pnml}\cite{kindler2006petri} or \textbf{PNML}.
 However, LoLa -- the model checker that we actually used -- defines it own representation.
-And a third representation that comes in handy for visualizing and debugging is \textbf{DOT}\cite, a simple language for graph definitions.
+And a third representation that comes in handy for visualizing and debugging is \textbf{DOT}\cite{koutsofios1996drawing}, a simple language for graph definitions.
 All langauges are comparable in their core idea.
 They all list nodes (places, transitions) and arcs of the graph. 
 Additionally, the petri net representations encode information for token count and arc weight.
@@ -653,7 +743,7 @@ And with a finished translation we can finally feed a model checker with our Pet
 \label{app_mc}
 To test and inspect our results we have the choice between different tools.
 %TODO: Tool liste maybe link pnml list
-There are jada jada \cite .
+% There are jada jada \cite .
 For a proof of concept it is not very important which model checker is used, since we will verify small test programs;
 Performance is not the biggest concern at this time.
 This is why LoLa was chosen by personal preference for this work.
@@ -680,17 +770,14 @@ And having that, lets use it in a test program.
 \label{app_test}
 If we want to get some confidence in our translation process we have to see if it behaves as expected.
 Initially, the basic functionality should be testet against the most simple programs to fail early.
-And what could be simpler than the empty program?
-\lstset{language=Rust,caption={The empty program},label=empty-program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
-\begin{lstlisting}
-pub fn main() {}
-\end{lstlisting}
+And what could be simpler than the empty program from listing \ref{empty-program}?
+% TODO: rewrite: basic blocks seem to be generated
 Beside giving a good starting point for a testable implementation, this program already revealed the edge case of empty functions.
 These function are not necessarily optimized away on the MIR level but also have no basic blocks as expected for every other function;
 A case that has to be considered.
 Additionally, the fact that all terminating programs have a deadlock should also get obvious here at the latest!
 
-Other programs that can strengthen the confidence in the translation process include some important language features, like an endless program (which actually is completely deadlock free):
+Other programs that can strengthen the confidence in the translation process include some important language features, like our simple function call from listing \ref{function_call_program} or an endless program (which actually is completely deadlock free):
 \lstset{language=Rust,caption={An endless program},label=endless-program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
 
 \begin{lstlisting}
@@ -698,37 +785,6 @@ pub fn main() -> ! {
     loop {}
 }
 \end{lstlisting}
-Or a program with a function call:
-
-\lstset{language=Rust,caption={A simple function call},label=function_call_program, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
-\begin{lstlisting}
-pub fn main() {
-    let mut x = 5;
-    x = call(x);
-}
-
-fn call(i: usize) -> usize {
-    i * 2
-}
-\end{lstlisting}
-
 However, non of these programs are significant for what we really want to achieve: deadlock detection.
-For this, we need a program that forces a repeating lock of a mutex.
-This does not necessarily have to be in multiple threads
-(which is fortunate since we did not cover actual parallelism with threads yet).
-We simply have to lock the mutex twice in a row to create a deadlock.
-And since the Rust compiler does no own deadlock analisis this code compiles successfully:
-% TODO: reference from introduction
-\lstset{language=Rust,caption={A deadlock!},label=deadlock_program2, frame=none, stepnumber=5, backgroundcolor=\color{verylightgray}}
-\begin{lstlisting}
-use std::sync::{Arc, Mutex};
-
-pub fn main() {
-    let data = Arc::new(Mutex::new(0));
-    let _d1 = data.lock();
-    let _d2 = data.lock(); // cannot lock, since d1 is still active
-}// unreachable end of main
-\end{lstlisting}
+For this, we use our very first example program from listing \ref{deadlock_program}.
 If our Petri-Net model is worth something the model checker should detect a deadlock for this program and none if we remove the last line.
-
-And with this we have all we need to evaluate our approch.

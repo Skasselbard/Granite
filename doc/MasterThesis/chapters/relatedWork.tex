@@ -16,9 +16,9 @@ Instead, safety issues are addressed with Rusts \textbf{ownership model}\cite{Ma
 
 In Rust, a memory resource (object) is associated by one unique owning variable.
 The owner can mutate the object, reference it or hand over ownership.
-By handing over ownership it is lost for the previous owner (to unsure unique ownership).
+When handing over ownership it is lost for the previous owner (to unsure unique ownership).
 However, references can be `borrowed' without loosing ownership.
-These borrows come at two flavors:
+These borrows come in two flavors:
 \begin{enumerate}
   \item There can be an arbitrary amount of \textbf{immutable references} at a given time.
   \item But only one active \textbf{mutable reference}. 
@@ -79,7 +79,6 @@ In the end however, we have a mapping from the source representation to the targ
 
 \section{Verification}
 \label{rel_mc}
-Every software engineer who worked on reasonable complex systems probably admits that initial software versions are usually full of inconsistencies and bugs.
 To achieve resilient and correct software a detailed understanding of the system and careful reviews of the implementation is needed.
 If this process is done systematically it is called verification.
 
@@ -88,8 +87,8 @@ Correctness is no intrinsic property of a system;
 It has to be defined in its context.
 For this, a description of the system -- a \textbf{specification} is required, to infer the \textbf{properties} it should fulfill.
 % TODO:
-\% example for specification and properties \%
-A \textbf{system is correct} if its specification satisfies all its properties\cite[Chapter 1]{baier2008principles}.
+% \% example for specification and properties \%
+A \textbf{system is correct} if its specification satisfies all its properties \cite[Chapter 1]{baier2008principles}.
 
 Among important approaches to verify software are code reviews and testing.
 Both techniques are valuable to find different kinds of errors.
@@ -100,21 +99,22 @@ Model checking tries to solve the ambitious problem to check a property for ever
 To do that, firstly the behavior of a system needs to be represented in a (name giving) model
 and secondly the properties that the system needs to fulfill has to be specified;
 Typically in a formal logic.
-Having both, all possible relevant model states are explored to verify that the given properties hold in that state.
-Unfortunately the the amount of states is typically exponential in the system size;
+Having both, all possible relevant model states are explored to verify that the given properties hold in all state.
+Unfortunately the amount of states is typically exponential in the system size;
 A phenomenon that is known as the \textbf{state explosion problem}\cite[Introduction]{mcmillan1993symbolic}.
-This is the most outstanding problem of model checking, but it would be less used if there where no ways to weaken the impact of the explosion.
+This is the most outstanding problem of model checking, but fortunately there are methods to weaken the impact of the explosion.
 Some of the major techniques are symbolic model checking, partial order reduction and abstraction refinement\cite[Chapter 5]{clarke2011model}.
-However, the important information here is that model checking nowadays, can tackle systems with a practical amount of states.
+However, the important information here is that model checking nowadays, can tackle systems with a realistic amount of states.
 
-What is more important to know is the model formalism we want to use in this work and how we will describe our properties; Namely Petri-Nets and CTL*.
+In this work, we use Petri-Nets as a formalism for the model and CTL* to express properties to check.
 
 \subsection{Petri-Nets}
 \label{rel_petri}
 Petri-Nets where developed in the mid 1900's by Carl Adam Petri\cite{petri1962kommunikation}.
 It is a formalism that is well suited to model concurrent behavior, since it does not model each state explicitly.
 
-Petri-Nets are a bipartite directed graph.
+% TODO: definition dead, terminal state
+A Petri-Nets is a bipartite directed graph.
 That means that a Petri-Net has two kinds of nodes where one kind is always connected to the other but never with the own kind.
 One type of nodes are \textbf{places}, that can hold an arbitrary amount of \textbf{tokens}.
 In low level petri nets these tokens do not carry any information; 
@@ -173,11 +173,13 @@ After that the second transition will consume both tokens (one token from each p
 It is not possible to consume only one of the two tokens -- every place from the preplace is involved in the fireing of a transition!
 And after the second transition has fired the net will be dead in a terminal state.
 
-Where is a large formal background to Petri-Nets that makes it possible to check for a variety of properties.
+% TODO: Oli: Zitationen für die verschiedenen Methoden und Erweiterungen.
+There is a large formal background to Petri-Nets that makes it possible to check for a variety of properties.
 For example it can be analysed if a particular marking can be reached from an initial marking or how many tokens a place may hold.
 And -- important for this work -- if the net can reach a \textbf{dead} state, where no transition can fire anymore.
 This state is equivalent to a deadlock.
 Another nice feature of Petri-Net-Models is that, if a state is found where a property is satisfied, it is typically possible to find a witness path from the initial marking.
+
 
 A downside of the formalism is the difficulty to model data.
 This can be addressed with several additions that lead to \textbf{high level Petri-Nets}, where tokens are associated with additional properties that can represent data.
@@ -187,6 +189,7 @@ However, these additions to the formalism weaken the statements that can be deri
 \subsection{Computational Tree Logic*}
 \label{rel_ctl}
 To articulate the properties we want to verify we need a precise formalism for both state properties and properties of timing.
+% TODO: Oli: Ich glaube nicht der nichtdeterminismus ist das Problem. In meiner MoSI Terminilogie würde ich ich sagen das Petrinetz ist schrittweise, und hat daher keine explizite Zeit/Dauer.
 However, low-level Petri-Net are non deterministic and therefore have no time associated with transition fireing;
 Neither is there a defined duration between the fireing of two transitions, nor a duration of a single fireing.
 So in our context the concept of time is not concerned with durations, but with the order of events.
