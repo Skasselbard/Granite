@@ -14,6 +14,7 @@ pub fn main() {
     let _d2 = data.lock();
 }
 \end{lstlisting}
+% TODO:
 The reason is a deadlock that is reached by locking an already locked mutex that will never be released.
 Rust is a language that is highly concerned with memory safety and concurrency\cite{Matsakis:2014:RL:2692956.2663188} but the detection of deadlocks is explicitly excluded from the design\cite[Chapter 8.1]{nomicon}(for good reasons).
 Nevertheless, it could be invaluable to detect such a situation automatically.
@@ -23,8 +24,9 @@ In this work we will:
 \begin{itemize}
     \item develop a Petri-Net\cite{petri1962kommunikation} semantics for Rust programs to serve as a model in chapter \ref{approach} (especially chapter \ref{app_trans}) ,
     \item find a mutex semantics for our model in chapter \ref{emulation}
-    \item detect the deadlock in the program from listing \ref{deadlock_program} with a model checker in chapter \ref{app_mc} and \ref{results},
+    \item detect the deadlock from listing \ref{deadlock_program} with a model checker in chapter \ref{app_mc} and \ref{results},
     \item investigate the result and the shortcomings of our approach in chapter \ref{results}
     \item and show a list of improvements that could lift our approach to be useable in realistic use cases in chapter \ref{future}
 \end{itemize}
+% TODO:
 But before all of that, we take a look on some of the concepts that this work is based on.

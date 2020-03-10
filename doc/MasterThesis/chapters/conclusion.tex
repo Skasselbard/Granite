@@ -3,8 +3,8 @@
 Rusts design principles strongly include memory safety and other safety properties.
 And there is an effort in the language community to formalize and proof these properties.
 A core part of rusts memory management was modeled in a formalism named Patina by Reed\cite{reed2015patina} in 2015.
-Patinas statements are shown to satisfy memory safety properties like initialization before use or aliasing bounds for mutable memory.
-$\lambda_{Rust}$ by Jung et. al.\cite{Jung:2017:RSF:3177123.3158154} extends its statements to unsafe code (where the rust borrow checker does not enforce its strong rules) and was verified to hold the formulated safety guarantees.
+Patinas statements satisfy memory safety properties like initialization before use or aliasing bounds for mutable memory.
+$\lambda_{Rust}$ by Jung et. al.\cite{Jung:2017:RSF:3177123.3158154} extends safety statements to unsafe code (where the Rust borrow checker does not enforce its strong rules) and was verified to hold the formulated safety guarantees.
 Recently Jung et. al published another approach to minimize undefined behavior (where compiled code can be unpredictable due to different compiler implementations) in unsafe code.
 These are important approaches to proof the guarantees that the language claims to give.
 However, guarantees outside of these boundaries have to be verified by other means.
@@ -19,12 +19,12 @@ Also the $\pi$-calculus is backed by a Petri-Net semantics\cite{busi1995petri} b
 
 \chapter{Conclusion}
 \label{conclusion}
-The main goal of this work was finding a mapping from rust programs to Petri-Nets.
+The main goal of this work was finding a mapping from Rust programs to Petri-Nets.
 A translated net then was intended to be used in a model checker to find deadlocks.
 
-To reach that goal we searched for a suitable representation for rust programs and developed a set of rules to translate that representation into Petri-Nets.
+To reach that goal we searched for a suitable representation for Rust programs and developed a set of rules to translate that representation into Petri-Nets.
 We did this for the basic components and constructed a complete model out of that components.
-Because some important flow related information -- like blocking execution -- is hard to detect with our approach, we also added an emulation for rust mutex locks.
+Because some important flow related information -- like blocking execution -- is hard to detect with our approach, we also added an emulation for Rust mutex locks.
 And finally we tested if a simple test program can be translated and verified with a model checker to find the expected deadlock.
 
 An analysis of our translation showed that our data model is very abstract and probably can be further improved.

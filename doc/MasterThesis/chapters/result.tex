@@ -3,7 +3,7 @@
 % Wirklich "Results" deiner Arbeit sind ja die Erkentnisse, die in der Discussion stehen. Der Andere Teil zeigt eben, dass dein Konzept und deine Implementierung funktionieren.
 \chapter{Result}
 \label{results}
-Having a concept on how to translate a rust program into a Petri-Net, we can now inspect the actual results.
+Having a concept on how to translate a Rust program into a Petri-Net, we can now inspect the actual results.
 \section{Translation target}
 \begin{figure}
   \centering
@@ -11,7 +11,7 @@ Having a concept on how to translate a rust program into a Petri-Net, we can now
   \caption{Translated Petr-Net}
   \label{function_call_net}
 \end{figure}
-In figure \ref{function_call_net} we can see the generated net for the function call program \ref{function_call_program} from the last chapter (since this is small enough to show and big enough to not be trivial).
+In figure \ref{function_call_net} we can see the generated net for the function call program from listing \ref{function_call_program} (since this is small enough to show and big enough to not be trivial).
 This is the true data that was produced for the dot target so we cannot immediately see the virtual boundaries for statements basic blocks and functions.
 To make the structure more clear the nodes where rearranged so that the called function is on the left and the main function on the right.
 The initialized places of the locals where renamed to show their MIR name (locals are scoped by functions so their names are not unique).
@@ -27,8 +27,9 @@ If this is expected behavior is not known at the time of writing;
 A bug report\footnote{https://github.com/rust-lang/rust/issues/67400} has yet to be solved.
 Unfortunately this behavior introduces an unintended deadlock into our translation since depending transitions can only fire if the initialized places where previously marked.
 To use the net for verification we have to work around this issue until it is fixed (or until the cause is modeled correctly).
-To be able to continue testing simply all \textit{initialized} places where marked.
-This way the involved transitions can fire, but only if the previous transition produced a token on the connecting place (the program counter place). 
+To be able to continue testing, simply all \textit{initialized} places where marked as well.
+This way the involved transitions can fire, but only if the previous transition produced a token on the connecting place (the program counter place).
+% TODO:
 An additional token will also remain on the initialized places even after the storage dead transition fired.
 However execution flow, again, will not be affected because of the program counter places.
 
@@ -62,14 +63,15 @@ Without the information on where and how execution should be blocked, the transl
 This is a general problem for blocking behavior by external cause.
 
 At this point it might be adequate to add that active waiting (looping until a guard has an expected value) is not a deadlock and also would not be detected with this approach.
+% TODO:
 However, it is likely that another formula can be found that verifies that leaving the waiting section is always possible.
 But again this most likely would require to consider the values that variables can hold and therefore high-level semantics.
 
 \section{Discussion}
 The results show that our basic approach can be used to verify some basic properties.
-And even though the state of the translation is nowhere near productive use there are some lessons that can be learned that we can discuss.
+And even though the state of the translation is nowhere near productive use there are some lessons learned that we can discuss.
 \subsection{The Model}
-The main draw back that followed us for the entire process is the abstraction of data in low-level petri nets.
+The main draw back that followed us for the entire process is the abstraction of data in low-level Petri-Nets.
 The advantages of the low-level model are not only the reduced complexity and higher verification performance, it can also produce stricter assertions.
 Additionally, our particular model most likely can exploit a petri-net property called safety:
 if we overlook the workaround for compensating the missing storage-statements, the token count on every place cannot exceed a maximum of one.
@@ -83,9 +85,9 @@ Another problem is that no moving data is modeled.
 If a previously initialized local moves into another local (like a field of a struct) we completely loose this information in our translation.
 Although, we can probably exploit Rusts strict borrow checking and aliasing rules to model a much closer relation between data,
 both locals are generated independently with their own places and life cycle.
-An improvement for a move of a value from one local to another (which is encoded in MIR), could be to connect the places with a transition right away.
+An improvement for a move of a value from one local to another (which is encoded in MIR with a keyword), could be to connect the places with a transition right away.
 
-Another disadvantage of our current model is inlining of functions.
+Another disadvantage of our current model is function inlining.
 If a program calls the same function at different places, a separat instance will be inserted at every call site.
 This not only makes the net larger, it catches the translation process in an endless loop in recursive functions.
 

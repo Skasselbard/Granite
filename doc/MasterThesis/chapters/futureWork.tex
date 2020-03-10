@@ -7,16 +7,16 @@ On the one hand a mechanism for splitting execution flow has to be integrated.
 Primarily that means appropriate handling of threads, most likely by emulating the functionality of spawning and joining them.
 In a Petri-Net that maps simply to a transition that produces a token on two separate places or consuming from two places respectively.
 On the other hand, the model for guarding critical sections has to be refined further.
-While the Petri-Net representation here is simple, a sound concept for the rust side has to be found.
+While the Petri-Net representation here is simple, a sound concept for the Rust side has to be found.
 Emulation of mutexes probably already catches a lot of scenarios but others can be found where this not suffice.
-For example low-level \textit{no\_std} environments there the mutexes from the standard library cannot be used.
+For example low-level \textit{no\_std} environments where the mutexes from the standard library cannot be used.
 Additionally, the current implementation actively marks locals to distinguish between mutex instances while this probably can be inferred.
 
 The currently used data model can be improved as well.
-Data that moves between locals or moves into or out of structures is currently modeled independently for every local, which masks its semantic connection.
+Data that moves between locals or moves into or out of structures is currently modeled independently for every local, which, in turn, masks its semantic connection.
 The movement might be modeled in a Petri-Net by separating the data from locals.
-A move then indicates that the previous local cannot access the data anymore, quite similar to the rust ownership model.
-If this can be done close to the rust semantics it might already fix the problem with marking mutexes.
+A move then indicates that the previous local cannot access the data anymore, quite similar to the Rust ownership model.
+If this can be done close to the Rust semantics it might already fix the problem with marking mutexes.
 
 Given a solid model with a reasonable control flow emulation, more complex szenarios should be testet.
 This could include artificial ones like Dijkstras dining philosophers \cite{dijkstra1971hierarchical} or real life programs.

@@ -1,9 +1,11 @@
 % !TEX root = ../main.tex
 \chapter{Background}
+% TODO: Auch das was Oli gesagt hat
 Before we start there are some basics that are useful to know about.
 In this chapter we try to address the most important ones, starting with our source language: Rust.
 \section{Rust}
 \label{rel_rust}
+% TODO: hard claim
 Typically programming languages can be divided into fast or safe: 
 either a language is used to produce highly optimized code that runs fast on the targeted system,
 or a language makes use of a lot of safety features that prevent inconsistencies at the cost of runtime performance.
@@ -33,8 +35,10 @@ And while eliminating all these errors can be invaluable, Rust cannot prevent al
 One of which are deadlocks\cite[Chapter 8.1]{nomicon} which we want to address with this work.
 
 \section{Deadlock and Mutex}
+% TODO: Lehrbuch zitation?
 Typically deadlocks are a problem of concurrent systems where resources are shared or a section of a program must only be entered once at a time (a critical section).
 To assure sequential access those resources are often guarded by a locking mechanisms like Dijkstras semaphores\cite{dijkstra1968cooperating} or the simpler form: a mutex.
+% TODO: stands for -> is
 Mutex stands for mutual exclusion and is used to lock access to a critical section.
 If a process of a program wants to enter this section it has to acquire a mutex lock.
 This is only possible if no other process currently has acquired the lock, otherwise the former process has to wait (or try later).
@@ -55,6 +59,7 @@ Compilers underwent heavy research and development in the past.
 Nowadays the structure of a compiler can be summarized into well defined phases\cite[Chapter 1.2]{aho1986compilers}:
 
 \begin{enumerate}
+  % TODO: überall beispiele?
   \item During the \textbf{Lexical Analysis}, the character stream of a source file is converted into a token stream.
   Tokens are all significant language components like keywords, identifiers and symbols (`=', `+', `\{', etc.).
   \item During \textbf{Syntax Analysis} (parsing) the token stream is structured into a tree,
@@ -67,7 +72,7 @@ Nowadays the structure of a compiler can be summarized into well defined phases\
   Examples are Java Bytecode or the LLVM intermediate representation
   \item The intermediate representation can be used for further analysis and optimization in the \textbf{Code Optimization} phase.
   Executable size or execution speed might be improved here.
-  Multiple intermediate representations might be generated and optimized before entering the final phase.
+  Multiple intermediate representations might be generated and optimized before entering the final phase:
   \item The \textbf{Code Generation} phase, which generates another representation.
   The only difference is that it is the final one -- the target representation.
   Thus it often produces executable machine code.
@@ -97,8 +102,8 @@ But in this work we will focus on \textbf{Model Checking}, an approach to search
 \subsection{Model Checking}
 Model checking tries to solve the ambitious problem to check a property for every possible system configuration.
 To do that, firstly the behavior of a system needs to be represented in a (name giving) model
-and secondly the properties that the system needs to fulfill has to be specified;
-Typically in a formal logic.
+and secondly the properties that the system needs to fulfill have to be specified;
+Usually in a formal logic.
 Having both, all possible relevant model states are explored to verify that the given properties hold in all state.
 Unfortunately the amount of states is typically exponential in the system size;
 A phenomenon that is known as the \textbf{state explosion problem}\cite[Introduction]{mcmillan1993symbolic}.
@@ -114,7 +119,7 @@ Petri-Nets where developed in the mid 1900's by Carl Adam Petri\cite{petri1962ko
 It is a formalism that is well suited to model concurrent behavior, since it does not model each state explicitly.
 
 % TODO: definition dead, terminal state
-A Petri-Nets is a bipartite directed graph.
+A Petri-Net is a bipartite directed graph.
 That means that a Petri-Net has two kinds of nodes where one kind is always connected to the other but never with the own kind.
 One type of nodes are \textbf{places}, that can hold an arbitrary amount of \textbf{tokens}.
 In low level petri nets these tokens do not carry any information; 
@@ -153,7 +158,7 @@ Other important definitions are:
   \caption{Petri-Net examples}
   \label{net_examples}
 \end{figure}
-Figure \ref{net_examples} shows four examples for Petri-Nets.
+Figure \ref{net_examples} shows four example nets.
 In the top left corner is a net with one place and one transition.
 The place is marked with two tokens and is the only place in the transitions preset.
 This means that the transition is active and can fire.
@@ -161,7 +166,7 @@ Since every fireing consumes a token (no edge annotations mean an edge weight of
 After that the net will be dead.
 The net below looks similar, only the edge direction is flipped.
 Now the preset of the transition is empty.
-The semantics here is that the transition can always fire since all places in the preset are properly marked.
+The semantics here is that all places in the preset are properly marked resulting in a transition that can always fire.
 As a result the connected place can accumulate an unbounded amount of tokens.
 The third net in the bottom left corner has a circular shape.
 At any given time one of the two transitions can fire, virtually moving the token back and forth.
@@ -188,15 +193,15 @@ However, these additions to the formalism weaken the statements that can be deri
 
 \subsection{Computational Tree Logic*}
 \label{rel_ctl}
-To articulate the properties we want to verify we need a precise formalism for both state properties and properties of timing.
+To articulate the properties we want to verify, we need a precise formalism for both state properties and properties of timing.
 % TODO: Oli: Ich glaube nicht der nichtdeterminismus ist das Problem. In meiner MoSI Terminilogie würde ich ich sagen das Petrinetz ist schrittweise, und hat daher keine explizite Zeit/Dauer.
 However, low-level Petri-Net are non deterministic and therefore have no time associated with transition fireing;
 Neither is there a defined duration between the fireing of two transitions, nor a duration of a single fireing.
 So in our context the concept of time is not concerned with durations, but with the order of events.
-Which transition fired before another or from which state can we reach another state.
+Which transition fired before another; Or from which state can we reach another state.
 
 These property are commonly expressed in a \textbf{temporal logic}.
-The primary ones used in model checking are linear temporal logic (LTL) from Pnueli\cite{pnueli1977temporal} computational tree logic (CTL) from Clarke and Emerson\cite{clarke1981design} and CTL* from Emerson and Halpern\cite{emerson1985decision}, a superset which includes both.
+The primary ones used in model checking are linear temporal logic (LTL) from Pnueli\cite{pnueli1977temporal} computational tree logic (CTL) from Clarke and Emerson\cite{clarke1981design} and CTL* (the `*' is pronounced `star') from Emerson and Halpern\cite{emerson1985decision}, a superset which includes both.
 Since we will later use CTL* to formulate our properties we will introduce its formula construction here.
 A CTL* formula can be structured with the following elements:
 \begin{itemize}
@@ -206,11 +211,12 @@ A CTL* formula can be structured with the following elements:
   A plain state formula like from above describes the path to the initial state of the system. Such a formula is satisfied if the first state of the system satisfies the property (and makes no statement on the following states).
   \item Formulas can be combined to larger formulas with logic operators. For example: $!(p_1=5\ \&\ p_3<3)$.
   \item The \textbf{Next} operator $X\varphi$ describes a path to the successor state. For example: $p_1=5$ is satisfied if $p_5$ is marked with 5 tokens in the first state, $X(p_1=5)$ is satisfied if $p_5$ is marked with 5 tokens in the second state, $XX(p_1=5$) is satisfied if $p_5$ is marked with five tokens in the third state and so on.
-  \item The \textbf{Eventually} operator $F\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in some successor state or -- to formulate it differently -- if it is reachable from the formula it is applied on.
+  \item The \textbf{Eventually} operator $F\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in some successor state or -- to formulate it differently: if it is reachable from the formula it is applied on.
   \item The \textbf{Always} operator $G\varphi$ describes a path formula that is satisfied if the enclosed formula is satisfied in every successor state -- or if it is always satisfied in the enclosed formula.
   \item The \textbf{Until} operator $\varphi_1 U\varphi_2$ describes a path formula that is satisfied if the the formula $\varphi_1$ is satisfied in every state until a state is reached which satisfies $\varphi_2$ at least once.
   For example there is always an active transition in a circle (of the form $t_1\rightarrow p_1 \rightarrow ... \rightarrow t_n \rightarrow p_n \rightarrow t_1$ ) as long as at least one of the places is marked with a token.
   But it can be marked again later if all tokens where lost.
+  % TODO: besipiele evtl mit bezug auf das petri net example
   \item And finally there are the \textbf{Path quantifiers} $E\varphi$ and $A\varphi$ which can be used to make a statement for the branching behavior of the system.
   Depending on a given state there might be multiple possible following states.
   In Petri-Nets that means there are multiple active transitions that can fire next.
@@ -218,4 +224,4 @@ A CTL* formula can be structured with the following elements:
   If the \textbf{Universal path quantifier} $A\varphi$ is applied on a path formula the resulting formular is only satisfied if the path formula is satisfied in \textbf{all} branching paths.
   In contrast the \textbf{Existential path quantifier} $E\varphi$ only requires the associated path formula to be satisfied in \textbf{one} of the successive paths.
 \end{itemize}
-The AP's and operators can be combine to express complex properties which serve as an input for model checkers.
+The AP's and operators can be combined to express complex properties which serve as an input for model checkers.
