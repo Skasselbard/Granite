@@ -1,8 +1,8 @@
 % !TEX root = ../main.tex
 \chapter{Future Work}
 \label{future}
-Although our approach produces Petri-Nets that are close to the Rust semantics there is a lot of space to improve.
-First of all, necessary flow related properties have to be modeled or emulated.
+Although our approach produces Petri-Nets that are close to the Rust semantics, there is a lot of space to improve.
+First, necessary flow related properties have to be modeled or emulated.
 On the one hand a mechanism for splitting execution flow has to be integrated.
 Primarily that means appropriate handling of threads, most likely by emulating the functionality of spawning and joining them.
 In a Petri-Net that maps simply to a transition that produces a token on two separate places or consuming from two places respectively.
@@ -16,13 +16,13 @@ The currently used data model can be improved as well.
 Data that moves between locals or moves into or out of structures is currently modeled independently for every local, which, in turn, masks its semantic connection.
 The movement might be modeled in a Petri-Net by separating the data from locals.
 A move then indicates that the previous local cannot access the data anymore, quite similar to the Rust ownership model.
-If this can be done close to the Rust semantics it might already fix the problem with marking mutexes.
+If this can be done close to the Rust semantics, it might already fix the problem with marking mutexes.
 
-Given a solid model with a reasonable control flow emulation, more complex szenarios should be testet.
+Given a solid model with a reasonable control flow emulation, more complex scenarios should be tested.
 This could include artificial ones like Dijkstras dining philosophers \cite{dijkstra1971hierarchical} or real life programs.
 This would be critical to decide if the verification process is efficient enough to be used in authentic use cases.
 Test analysis would also improve from more sophisticated verification results.
-Currently the witness path is only a chain of transition ids.
+Currently, the witness path is only a chain of transition ids.
 But the MIR stores source-file-location-information that could be linked with the corresponding Petri-Net nodes.
 It is likely that this information can be used to map the witness path to the original program source code.
 This would improve usability a lot.
@@ -32,4 +32,4 @@ For example the missing storage statements we talked about in chapter \ref{resul
 This is a graph property that can be verified and might indicate a bug.
 If more graph properties should be met by the MIR graph, they could be included into a test case to improve the compiler development process.
 
-And finally, lifting the model to high-level petri nets could be a solution to some intrinsic shortcomings (like the recursion restriction) and open the door to data dependent verification properties.
+And finally, lifting the model to high-level Petri-Nets could be a solution to some intrinsic shortcomings (like the recursion restriction) and open the door to data dependent verification properties.

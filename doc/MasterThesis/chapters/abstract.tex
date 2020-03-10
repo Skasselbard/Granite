@@ -1,15 +1,17 @@
 % !TEX root = ../main.tex
 % TODO: Schau dir nochmal ein paar Paper abstracts an.
-% Du solltest vorher noch einen Satz zur Motivation schreiben, und vor den letzten Satz noch einen Satz zu Ergebnissen schreiben.
+% Du solltest vorher noch einen Satz zur Motivation schreiben.
 \section*{Eine Petrinetzsemantik für Rust}
 Es wird ein allgemeiner Ansatz gezeigt Rustprogramme in ein Petrinetzmodel zu überführen.
 Die Übersetzung eines Beispielprogramms wird als Eingabe in einem Model-Checker verwendet um ein Deadlock zu finden, der durch mehrfaches blockieren eines Mutex verursacht wir.
+Ein Prototyp der Übersetzung ist in der Lage den Deadlock im Beispielprogram zu finden und einen Zeugenpfad zu generieren.
 Anschließend werden einige Vorschläge zur Verbesserung der gezeigten Übersetzung diskutiert.
 
 \section*{A Petri-Net semantics for Rust}
 We show a general approach to translate a Rust program into a Petri-Net model.
 An example program is used as input for a model checker to find a contained deadlock.
 The deadlock is caused by locking a mutex multiple times.
+A prototype of our concept is able to find the deadlock from the example program and produces a witness path to the corresponding part of the translation.
 In the last part of this work we discuss how our approach can be improved further.
 
 \vfill
