@@ -1,4 +1,4 @@
-\chapter{Demonstration}
+\chapter{Test procedure}
 \label{results}
 After developing a translation concept, it is time to use it in practice.
 In this chapter we will discuss how to develop the deadlock property we want to check and the results of our verification run.
@@ -11,18 +11,17 @@ But to be compatible with a Model checker we have to use some interface or a sta
 defines a commonly known structure.
 Luckily there exists an XML-based standard for Petri-Nets called \textbf{Petri Net Markup Language}\cite{pnml}\cite{kindler2006petri} or \textbf{PNML}.
 However, LoLA -- the model checker that we actually used -- defines it own representation.
-And a third representation that comes in handy for visualizing and debugging is \textbf{DOT}\cite{koutsofios1996drawing}, a simple language for graph definitions.
+And a third representation that comes in handy for visualization and debugging is \textbf{DOT}\cite{koutsofios1996drawing}, a simple language for graph definitions.
 All languages are comparable in their core idea.
 They all list nodes (places, transitions) and arcs of the graph. 
 Additionally, the Petri-Net representations encode information for token count and arc weight.
 Since all the three representation serve their own purpose, they were all integrated as target representation in our prototype.
-And with a finished translation we can finally feed a model checker with our Petri-Net.
 
 \section{Model Checking}
 \label{app_mc}
 To test and inspect our results we have the choice between different tools.
 An inspiration of performant tools like TAPAAL\cite{tapaal}, ITS-tools\cite{its-tools} or LoLA\cite{lola}\cite{schmidt2000lola} can be found in the results of the `Model Checking Contest'\cite{mcc}.
-For a proof of concept it is not very important which model checker is used, since we will verify small test programs;
+However, for a proof of concept it is not very important which model checker is used, since we will verify small test programs;
 Performance is not the biggest concern at this time.
 This is why LoLA was chosen by personal preference for this work.
 
@@ -42,7 +41,6 @@ To specify that our state property holds eventually and to find an applicable pa
 Its semantic is that the given property is satisfied in any of the successive paths at some point (or state).
 So our final formula would look like this:
 $$\Phi = EF(DEADLOCK\ \& (program\_end = 0\ \&\  panic = 0))$$
-And having that, lets use it in a test program.
 
 \section{Test Programs}
 \label{app_test}
@@ -87,9 +85,8 @@ A bug report\footnote{https://github.com/rust-lang/rust/issues/67400} has yet to
 Unfortunately this behavior introduces an unintended deadlock into our translation since depending transitions can only fire if the initialized places where previously marked.
 To use the net for verification we have to work around this issue until it is fixed (or until the cause is modeled correctly).
 To be able to continue testing, simply all \textit{initialized} places where marked as well.
-This way the involved transitions can fire, but only if the previous transition produced a token on the connecting place (the program counter place).
-% TODO:
-An additional token will also remain on the initialized places even after the storage dead transition fired.
+This way the involved transitions can fire, but only if the previous statement produced a token on the connecting place (the program counter place).
+But now, an additional token will remain on all other initialized places even after the storage dead transition fired.
 However, execution flow, again, will not be affected because of the program counter places.
 
 A second detail that the net shows is that the function call transition is implicit;
@@ -126,6 +123,7 @@ However, it is likely that another formula can be found, to verify that leaving 
 But again this most likely would require to consider the values that variables can hold and therefore high-level semantics.
 
 \chapter{Evaluation}
+\label{eval}
 The results show that our basic approach can be used to verify some basic properties.
 And even though the state of the translation is nowhere near productive use there are some lessons learned that we can discuss.
 \section{The Model}

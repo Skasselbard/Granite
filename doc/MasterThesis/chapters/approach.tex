@@ -185,13 +185,13 @@ This means that a location can also be represented as a place, but places are no
 In our example all places are also locals.
 
 Statements work on these data representations.
-The most prominent type of statement is the assignment that assigns an \textbf{rvalue} derived from an expression to a memory location -- meaning a place (the \textbf{lvalue}).
+The most prominent type of statement is the assignment that assigns an \textbf{rvalue} derived from an expression, to a memory location -- meaning a place (the \textbf{lvalue}).
 For example the second statement in \textit{BB0} from \textit{main} is an assignment statement that assigns the constant value \textit{5} (a unary expression with only one constant operator) to local \textit{\_1}.
 All other statements in our example are \textit{StorageLive} and \textit{StorageDead} statements.
 Locals cannot be used before they were set live or after they were set dead -- except for the return local (always local \textit{\_0}) and function arguments (always the first locals after local \textit{\_0}).
 They are logically linked to locals in the calling function where the initialization was already handled.
 
-Terminators can direct control flow for example with a function-call-terminator (like the one in \textit{BB0} of \textit{main}.
+Terminators can direct control flow for example with a function-call-terminator (like the one in \textit{BB0} of \textit{main}).
 These redirect control flow to a subroutine that is executed until a return-terminator is hit.
 This one marks the end of a function and let the flow continue in the calling function.
 The return terminator in the main function marks the end of the program and results in its successful termination.
@@ -289,7 +289,7 @@ If we want to translate a program, we have to keep this structure in mind.
 In our implementation we have done this virtually with an own call stack.
 We traverse the program function by function.
 Every time we encounter a function-call-terminator we try to translate the called function and return where we left after we are done.
-In a new call the context is switched to the new variables and basic blocks, and the return semantics is stored.
+In the new call the context is switched to the new variables and basic blocks, and the return semantics is stored.
 
 However, this approach has some implications:
 \begin{enumerate}
@@ -325,9 +325,15 @@ For our purposes we can interpret a place as a memory location and a token as ar
 Though we loose the information for the actual variable value, we still can analyze the program flow.
 Additionally, this representation resonates well with a possible high-level extension where the token can be annotated with the current value of a variable.
 So, to keep it simple we represent a memory location as a single place with a single token.
-`Reading' from and `writing' to memory can be modeled with a transition that consumes the token, while also producing a token.
+`Reading' from and `writing' to memory can be modeled with a transition that consumes the token, while also producing a token as shown in figure \ref{memory_access}.
 In theory the consumed and produced token in a read has to be the same while writing can change the token.
 But again this is only relevant for high-level nets.
+\begin{figure}
+    \centering
+    \includegraphics[width=.4\textwidth]{../diagrams/memoryAccess.png}
+    \caption{Memory access.}
+    \label{memory_access}
+\end{figure}
 
 Now, in many programming language there are different concepts of memory that behave differently, and Rust is no exception.
 Basically we can distinguish between four different concepts\cite[Chapter 3.1, Chapter 4.1, Chapter 19.1]{klabnik2018rust}:
@@ -375,13 +381,14 @@ which field of a struct, which index of an array or if we dereference the local.
 This information is stored implicitly as MIR-place on which statements can operate.
 Unfortunately this projection is hard to impossible to model.
 Especially pointer dereferencing is a problem since the memory model is handled by the operating system at runtime.
-But for all these projections the source -- the initial local -- is known.
+But for all these projections, the source -- the initial local -- is known.
 If a projection is used in a statement we can interpret this as access to the initial local.
 Again we loose some information here in exchange for a manageable design.
 
 Much easier to model is the space for constant variables.
 Their behavior is close to locals that live for the entire runtime.
-So they do not need any uninitialized or dead place, just a place that represents the current value.
+So they do not need any uninitialized or dead place; 
+Just a place that represents the current value.
 In fact, we can model the whole constant space as a single Petri-Net place, where every access is done with different transitions.
 There is no data manipulation anyway.
 And again this approach resonates well with a possible high-level Petri-Net extension where every accessing transition produces tokens annotated with the corresponding constant values.
@@ -426,7 +433,7 @@ https://doc.rust-lang.org/nightly/nightly-rustc/rustc/mir/enum.StatementKind.htm
 \begin{itemize}
     \item The \textit{StorageLive} statement consumes a token from the \textit{uninitialized} place of a local variable, and produces one on its \textit{live} place.
     \item The \textit{StorageDead} statement consumes a token from the \textit{live} place of a local variable, and produces one on its \textit{dead} place.
-    \item An \textit{Assign} statement in the language semantics, evaluates an expression and assigns the result to a memory location (lvalue).
+    \item An \textit{Assign} statement, in the language semantics, evaluates an expression and assigns the result to a memory location (lvalue).
     In Petri-Net semantics it consumes a token from the lvalues live place and all live places that are involved in the rvalue expression.
     Simultaneously new tokens are produced on all of them (one per involved place).
     This means that no assign statement can be executed until the corresponding locals are initialized with a storage live statement or after the local was retired with a storage dead statement.
@@ -458,7 +465,7 @@ The MIR representation again has different kinds of terminators\footnote{A compl
     It connects two basic blocks inside a single function.
     \item The \textit{SwitchInt} terminator implements a conditional branch to multiple other basic blocks inside a single function.
     A branching path can only be taken if its condition is met.
-    Only the last branching path acts as an \textit{otherwise} branch.
+    Just the last branching path acts as an \textit{otherwise} branch.
     It will be taken if there is no other valid path where the condition is met.
     Since the Petri-Net representation is used for model checking, we always consider every possible branch.
     As a result we can ignore the condition and just connect all involved basic blocks with a transition.
@@ -632,9 +639,9 @@ Mutexes guard execution flow depending on a data variable.
 If we just access the variable and continue like we do for statements, flow could always continue.
 However, flow should only be allowed to continue if the mutex variable can be acquired (and block otherwise).
 This can easily be modeled in Petri-Nets with a marked mutex place as figure \ref{mutex_net} shows.
-Then, on every try to acquire the mutex a transition has to consume the token from the mutex place.
+Now, on every try to acquire the mutex, a transition has to consume the token from the mutex place.
 The first try will do so without further problems but every following attempt will be blocked, since transitions can only fire when all preplaces are properly marked.
-When leaving the critical section a transition needs to reproduce a mark on the mutex place again, so that blocked processes can continue with their computation.
+When leaving the critical section a transition needs to reproduce a token on the mutex place again, so that blocked processes can continue with their computation.
 \begin{figure}
     \centering
     \includegraphics[width=.4\textwidth]{../diagrams/mutexNet.png}
@@ -671,7 +678,7 @@ Now, the call to mutex \textit{lock()} and the release of the lock will trigger 
 For translation, we can model the complete underlying behavior or abstract from it.
 Both approaches are perfectly valid: the former would be closer to the actual execution behavior while the latter would be closer to the basic program semantics (that does not care about the mutex implementation).
 But in favor of a small Petri-Net, we stick to the abstract way that ignores the implementation.
-When a mutex is called we will stall normal translation and just insert our own abstraction at the place of the corresponding function calls.
+When a mutex is called we will stall normal translation and just insert our own abstraction in place of the corresponding function calls.
 But there is more we have to consider.
 
 If we take a look on a pruned version of the MIR layer in listing \ref{rust-mutex-mir}, we can identify a Problem.

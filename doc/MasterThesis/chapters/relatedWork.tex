@@ -1,13 +1,13 @@
 % !TEX root = ../main.tex
 \chapter{Background}
-Before we start there, are some basics that are useful to know about.
+Before we start, there are some basics that are useful to know about.
 In this chapter we introduce the formalism for our model and for our properties to verify.
 We also explain the ideas behind mutexes, deadlocks and compilers.
 And we begin our background chapter with a summary of the programming language Rust.
 
 \section{Rust}
 \label{rel_rust}
-By trend programming languages can be divided into fast or safe\cite{speedSafety}: 
+By trend, programming languages can be divided into fast or safe\cite{speedSafety}: 
 either a language is used to produce highly optimized code that runs fast on the targeted system,
 or a language makes use of sophisticated safety features that prevent inconsistencies at the cost of runtime performance.
 
@@ -37,17 +37,16 @@ One of which are deadlocks\cite[Chapter 8.1]{nomicon} which we want to address w
 
 \section{Deadlock and Mutex}
 Typically, deadlocks are a problem of concurrent systems where resources are shared or a section of a program must only be entered once at a time (a critical section).
-To assure sequential access those resources are often guarded by a locking mechanisms like Dijkstras semaphores\cite{dijkstra1968cooperating} or the simpler form: a mutex.
-Mutex stands for mutual exclusion, and they are used for exclusive access to a critical section.
-If a process of a program wants to enter this section, it has to acquire a mutex lock.
+To assure sequential access, those resources are often guarded by a locking mechanisms like Dijkstras semaphores\cite{dijkstra1968cooperating} or the simpler form: a mutex (for mutual exclusion). Mutexes are used for exclusive access to a critical section.
+If a process wants to enter this section, it has to acquire a mutex lock.
 This is only possible if no other process currently has acquired the lock, otherwise the former process has to wait (or try later).
-If the critical section is left by the locking process, the lock has to be released to unblock waiting processes.
+After the process left the critical section, the lock has to be released to unblock waiting processes.
 If the locks are not released correctly it can lead to a situation where all process are waiting to acquire a mutex lock that will never be released and the whole execution comes to a halt: a deadlock.
 A deadlock situation often depends on nondeterministic behavior (for example process/thread scheduling or network communication) which can make debugging rather difficult.
-Therefore, having proof of deadlock absence can be powerful information especially in highly parallel systems.
+Therefore, having proof of deadlock absence can be powerful information, especially in highly parallel systems.
 
 \section{Compilers}
-The goal of this work is to combine the benefits of the Rust ownership system with the benefits of Petri-Net model checking.
+The goal of this work is to combine the benefits of Rusts ownership system with the benefits of Petri-Net model checking.
 To achieve this goal we have to translate from Rust to Petri-Nets, 
 and we want to do it programmatically.
 This is basically the definition of a compiler\cite[Chapter 1.1]{aho1986compilers}:
@@ -195,10 +194,10 @@ To articulate the properties we want to verify, we need a precise formalism for 
 However, low-level Petri-Net have no time associated with transition firing;
 Neither is there a defined duration between the firing of two transitions, nor a duration of a single firing.
 So in our context the concept of time is not concerned with duration, but with the order of events.
-Which transition fired before another; Or from which state can we reach another state.
+Which transition fired before another; Or from which state another state can be reached.
 
 These properties are commonly expressed in a \textbf{temporal logic}.
-The primary ones used in model checking are linear temporal logic (LTL) from Pnueli\cite{pnueli1977temporal} computational tree logic (CTL) from Clarke and Emerson\cite{clarke1981design} and CTL* (the `*' is pronounced `star') from Emerson and Halpern\cite{emerson1985decision}, a super set which includes both.
+The primary ones used in model checking are linear temporal logic (LTL) from Pnueli\cite{pnueli1977temporal} computational tree logic (CTL) from Clarke and Emerson\cite{clarke1981design} and CTL* (the `*' is pronounced `star') from Emerson and Halpern\cite{emerson1985decision}(a super set which includes both LTL and CTL properties).
 Since we will later use CTL* to formulate our properties, we will introduce its formula construction here.
 A CTL* formula can be structured with the following elements:
 \begin{itemize}
